@@ -1,8 +1,11 @@
-# E-Voting Platform
+# Ballotry
 
 A white-label online election platform. One deployment serves one organisation,
 which configures its own identity — logo, name, colour, terminology — from the
 admin UI. Nothing about the organisation is baked into the codebase.
+
+Ballotry is the platform name; it is never shown to voters. Voters only ever see
+the branding of the organisation running the election.
 
 Built with Next.js (App Router), Prisma/PostgreSQL, and Tailwind CSS. The admin
 UI is based on the TailAdmin dashboard template.

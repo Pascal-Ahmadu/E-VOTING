@@ -1,5 +1,5 @@
 {
-  "name": "evoting-platform",
+  "name": "ballotry",
   "version": "2.2.3",
   "private": true,
   "scripts": {

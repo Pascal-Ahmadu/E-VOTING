@@ -60,3 +60,6 @@ Thumbs.db
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local working doc, contains organisation-specific content
+NIWE-Presentation.md
