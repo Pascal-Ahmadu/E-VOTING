@@ -259,14 +259,13 @@ export default function PlatformPage() {
         )}
       </div>
 
-      <Modal isOpen={adding} onClose={() => setAdding(false)} className="max-w-lg p-6">
+      <Modal isOpen={adding} onClose={() => setAdding(false)} className="max-w-2xl p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
           New organisation
         </h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Creates the organisation and its first administrator together. Only
-          the essentials are set here — logo, brand colour, tagline and voter-ID
-          wording are theirs to choose once they sign in.
+          Creates the organisation and its first administrator. Logo, colour and
+          wording are theirs to set once they sign in.
         </p>
 
         <form onSubmit={handleCreate} noValidate className="mt-5 space-y-4">
@@ -282,7 +281,7 @@ export default function PlatformPage() {
               value={form.orgName}
               onChange={(e) => handleName(e.target.value)}
               placeholder="Acme Professional Institute"
-              hint="The full legal name. Appears on printed result sheets and in the credential emails sent to voters."
+              hint="Full legal name — used on result sheets and emails"
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -293,7 +292,7 @@ export default function PlatformPage() {
                 value={form.orgShortName}
                 onChange={(e) => setField("orgShortName", e.target.value)}
                 placeholder="Acme"
-                hint="Shown in the sidebar and above the voter sign-in form. Also seeds their voter ID prefix, e.g. ACME-K7P2."
+                hint="Sidebar and sign-in. Seeds voter IDs: ACME-K7P2"
               />
             </div>
             <div>
@@ -308,22 +307,21 @@ export default function PlatformPage() {
                 placeholder="acme"
                 hint={
                   form.slug
-                    ? `Voters will go to ${origin}/o/${form.slug} — this cannot be changed later`
-                    : "Becomes their voter address. Lowercase letters, numbers and dashes. Fills in from the name; edit if you want something shorter."
+                    ? `/o/${form.slug} — permanent, cannot be changed`
+                    : "Their voter address. Lowercase, numbers, dashes"
                 }
               />
             </div>
           </div>
 
           <div className="border-t border-gray-200 pt-4 dark:border-gray-800">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
               First administrator
+              <span className="ml-2 font-normal text-gray-400">
+                runs this organisation&apos;s elections
+              </span>
             </p>
-            <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
-              The person who will run this organisation&apos;s elections. They
-              can add more administrators themselves afterwards.
-            </p>
-            <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="admin-name" required>Name</Label>
                 <Input
@@ -331,7 +329,6 @@ export default function PlatformPage() {
                   value={form.adminName}
                   onChange={(e) => setField("adminName", e.target.value)}
                   placeholder="Ada Lovelace"
-                  hint="Shown in the admin header and against their entries in the audit log."
                 />
               </div>
               <div>
@@ -342,17 +339,17 @@ export default function PlatformPage() {
                   value={form.adminEmail}
                   onChange={(e) => setField("adminEmail", e.target.value)}
                   placeholder="ada@acme.org"
-                  hint="What they sign in with. Must be unique across the whole platform, and no email is sent to it automatically."
+                  hint="Their sign-in. Not emailed automatically"
                 />
               </div>
-              <div>
+              <div className="sm:col-span-2">
                 <Label htmlFor="admin-passcode" required>Passcode</Label>
                 <Input
                   id="admin-passcode"
                   type="text"
                   value={form.adminPasscode}
                   onChange={(e) => setField("adminPasscode", e.target.value)}
-                  hint="At least 8 characters. You choose it and pass it on securely — it is never emailed. They can change it once signed in."
+                  hint="8+ characters. Share it securely — never emailed"
                 />
               </div>
             </div>
