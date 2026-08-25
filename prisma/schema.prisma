@@ -5,7 +5,9 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  // Unpooled endpoint for schema push/migrations. Reads the name Neon's
+  // Vercel integration already injects, so there is no extra variable to set.
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model Admin {

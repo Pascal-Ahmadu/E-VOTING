@@ -69,7 +69,7 @@ admin sign-in page in development. Change the passcode after first sign-in.
 
 See `.env.example` for the full list. The essentials:
 
-- `DATABASE_URL` / `DIRECT_URL` — PostgreSQL connection
+- `DATABASE_URL` / `DATABASE_URL_UNPOOLED` — pooled and direct PostgreSQL connections
 - `SESSION_SECRET` — iron-session cookie secret
 - `BLOB_READ_WRITE_TOKEN` — Vercel Blob, for logo and candidate photo uploads
 - `SMTP_USER` / `SMTP_PASS` — Gmail account and App Password for credential emails
