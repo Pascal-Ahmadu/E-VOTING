@@ -4,7 +4,8 @@ import "./globals.css";
 import { SidebarProvider } from "@/context/SidebarContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { BrandingProvider } from "@/context/BrandingContext";
-import { brandColorCss, getBranding } from "@/lib/branding";
+import { getBranding } from "@/lib/branding";
+import { brandColorCss } from "@/lib/brand-palette";
 
 const lato = Lato({
   subsets: ["latin"],

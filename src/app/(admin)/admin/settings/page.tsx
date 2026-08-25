@@ -9,6 +9,12 @@ import Breadcrumb from "@/components/common/Breadcrumb";
 import Skeleton from "@/components/ui/skeleton/Skeleton";
 import { apiCall } from "@/lib/api-client";
 import { TrashBinIcon } from "@/icons";
+import {
+  BRAND_PRESETS,
+  DEFAULT_BRAND_COLOR,
+  brandRamp,
+  isHexColor,
+} from "@/lib/brand-palette";
 
 interface BrandingForm {
   orgName: string;
@@ -30,13 +36,11 @@ const EMPTY: BrandingForm = {
   orgName: "",
   orgShortName: "",
   tagline: "",
-  brandColor: "#198a44",
+  brandColor: DEFAULT_BRAND_COLOR,
   voterIdLabel: "Voter ID",
   emailFromName: "",
   supportEmail: "",
 };
-
-const RAMP_STEPS = [25, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -150,6 +154,10 @@ export default function SettingsPage() {
       </div>
     );
   }
+
+  // Generated from the pending value with the same function the server uses,
+  // so the preview below is the real resulting ramp.
+  const previewRamp = brandRamp(form.brandColor);
 
   return (
     <div className="space-y-6">
@@ -308,14 +316,43 @@ export default function SettingsPage() {
             One seed colour generates the full palette used for buttons, links
             and highlights across the app.
           </p>
-          <div className="mt-4 flex flex-wrap items-end gap-4">
+          {/* Presets — a starting point for admins without a hex code to hand */}
+          <div className="mt-4">
+            <span className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+              Presets
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {BRAND_PRESETS.map((preset) => {
+                const active =
+                  form.brandColor.toLowerCase() === preset.hex.toLowerCase();
+                return (
+                  <button
+                    key={preset.hex}
+                    type="button"
+                    title={`${preset.name} — ${preset.hex}`}
+                    aria-label={preset.name}
+                    aria-pressed={active}
+                    onClick={() => setField("brandColor", preset.hex)}
+                    style={{ background: preset.hex }}
+                    className={`h-9 w-9 rounded-full ring-offset-2 transition dark:ring-offset-gray-900 ${
+                      active
+                        ? "ring-2 ring-gray-900 dark:ring-white"
+                        : "ring-1 ring-black/10 hover:ring-2 hover:ring-gray-400"
+                    }`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-end gap-4">
             <div>
-              <Label htmlFor="brand-color">Brand colour</Label>
+              <Label htmlFor="brand-color">Custom colour</Label>
               <div className="flex items-center gap-3">
                 <input
                   id="brand-color"
                   type="color"
-                  value={form.brandColor}
+                  value={isHexColor(form.brandColor) ? form.brandColor : DEFAULT_BRAND_COLOR}
                   onChange={(e) => setField("brandColor", e.target.value)}
                   className="h-11 w-14 cursor-pointer rounded-lg border border-gray-300 bg-white p-1 dark:border-gray-700 dark:bg-gray-800"
                 />
@@ -329,24 +366,59 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
-            <div className="flex items-end gap-1" aria-hidden="true">
-              {RAMP_STEPS.map((step) => (
-                <span
-                  key={step}
-                  className="h-8 w-6 rounded-sm ring-1 ring-black/5"
-                  style={{ background: `var(--color-brand-${step})` }}
-                />
-              ))}
+
+            {/* Live preview: generated from the pending value with the same
+                function the server uses, so this is the real resulting ramp. */}
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                Preview
+              </span>
+              <div className="flex items-end gap-1" aria-hidden="true">
+                {previewRamp.map(([step, hex]) => (
+                  <span
+                    key={step}
+                    title={`brand-${step} ${hex}`}
+                    className="h-8 w-6 rounded-sm ring-1 ring-black/5"
+                    style={{ background: hex }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
+
+          {/* Sample UI in the pending colour, so the choice can be judged on
+              the components it actually affects rather than raw swatches. */}
+          <div className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+            <span
+              className="rounded-lg px-4 py-2 text-sm font-medium text-white"
+              style={{ background: previewRamp.find(([s]) => s === 500)?.[1] }}
+            >
+              Sign in to vote
+            </span>
+            <span
+              className="rounded-lg px-3 py-1.5 text-sm font-medium"
+              style={{
+                background: previewRamp.find(([s]) => s === 50)?.[1],
+                color: previewRamp.find(([s]) => s === 700)?.[1],
+              }}
+            >
+              Active
+            </span>
+            <span
+              className="text-sm font-medium underline"
+              style={{ color: previewRamp.find(([s]) => s === 600)?.[1] }}
+            >
+              A link
+            </span>
+          </div>
+
           {errors.brandColor && (
             <p role="alert" className="mt-3 text-sm text-error-500">
               {errors.brandColor}
             </p>
           )}
           <p className="mt-3 text-xs text-gray-400">
-            The swatches show the palette currently in effect. Save to
-            regenerate it from the selected colour.
+            The preview updates as you choose. Save to apply it across the app.
           </p>
         </section>
 

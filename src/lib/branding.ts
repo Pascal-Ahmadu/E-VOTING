@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { db } from "./db";
 import { log } from "./logger";
+import { DEFAULT_BRAND_COLOR } from "./brand-palette";
 
 /** The settings row is a singleton — one deployment, one organisation. */
 export const SETTINGS_ID = "singleton";
@@ -25,7 +26,7 @@ export const BRANDING_DEFAULTS: Branding = {
   orgShortName: "Elections",
   tagline: null,
   logoUrl: null,
-  brandColor: "#198a44",
+  brandColor: DEFAULT_BRAND_COLOR,
   voterIdLabel: "Voter ID",
   emailFromName: "Election Platform",
   supportEmail: null,
@@ -62,73 +63,6 @@ export const getBranding = cache(async (): Promise<Branding> => {
     return BRANDING_DEFAULTS;
   }
 });
-
-/* ------------------------------------------------------------------ */
-/* Colour ramp                                                         */
-/* ------------------------------------------------------------------ */
-
-/** Tint/shade factors per step. Positive mixes toward white, negative toward
- * black. Tuned so a mid-tone seed reproduces a ramp close to the original
- * hand-picked green. */
-const RAMP: ReadonlyArray<readonly [step: number, mix: number]> = [
-  [25, 0.97],
-  [50, 0.94],
-  [100, 0.86],
-  [200, 0.7],
-  [300, 0.5],
-  [400, 0.25],
-  [500, 0],
-  [600, -0.15],
-  [700, -0.32],
-  [800, -0.45],
-  [900, -0.56],
-  [950, -0.7],
-];
-
-const HEX_RE = /^#[0-9a-fA-F]{6}$/;
-
-export function isHexColor(value: string): boolean {
-  return HEX_RE.test(value.trim());
-}
-
-function toRgb(hex: string): [number, number, number] {
-  const h = hex.trim().slice(1);
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-  ];
-}
-
-function toHex(rgb: [number, number, number]): string {
-  return (
-    "#" +
-    rgb
-      .map((c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, "0"))
-      .join("")
-  );
-}
-
-/**
- * Build the full `--color-brand-*` ramp from one seed colour and return it as a
- * CSS rule. Injected into the document so Tailwind's `bg-brand-500` and friends
- * re-point at the organisation's colour without a rebuild.
- */
-export function brandColorCss(seed: string): string {
-  const hex = isHexColor(seed) ? seed : BRANDING_DEFAULTS.brandColor;
-  const [r, g, b] = toRgb(hex);
-  const vars = RAMP.map(([step, mix]) => {
-    const target = mix >= 0 ? 255 : 0;
-    const t = Math.abs(mix);
-    const shade = toHex([
-      r + (target - r) * t,
-      g + (target - g) * t,
-      b + (target - b) * t,
-    ]);
-    return `--color-brand-${step}:${shade};`;
-  }).join("");
-  return `:root{${vars}}`;
-}
 
 /**
  * Prefix for auto-generated voter IDs, derived from the organisation's short

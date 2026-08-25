@@ -5,7 +5,8 @@ import { requireAdmin } from "@/lib/auth-guards";
 import { requireSameOrigin } from "@/lib/csrf";
 import { parseJson } from "@/lib/zod-helpers";
 import { audit, requestMeta } from "@/lib/audit";
-import { BRANDING_DEFAULTS, SETTINGS_ID, isHexColor } from "@/lib/branding";
+import { BRANDING_DEFAULTS, SETTINGS_ID } from "@/lib/branding";
+import { isHexColor } from "@/lib/brand-palette";
 
 /**
  * The raw stored settings, for the admin branding form.
