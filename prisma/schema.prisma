@@ -1,0 +1,273 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  /// Initial seeded passcode. After the first credential rotation this column
+  /// is no longer authoritative — the latest AdminCredential row is.
+  passcodeHash String
+  createdAt    DateTime @default(now())
+
+  credentials AdminCredential[]
+
+  @@map("admins")
+}
+
+/// Append-only credential history for an admin. The row with the latest
+/// createdAt is the active passcode; older rows are immutable evidence of
+/// past credentials.
+model AdminCredential {
+  id           String   @id @default(cuid())
+  adminId      String
+  passcodeHash String
+  createdAt    DateTime @default(now())
+
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@map("admin_credentials")
+}
+
+model Voter {
+  id           String   @id @default(cuid())
+  /// `name`, `email`, and `voterId` are stored AES-256-GCM encrypted.
+  /// Each insert uses a fresh nonce, so ciphertext equality means nothing —
+  /// uniqueness is enforced via the `*Hash` columns instead.
+  name         String
+  email        String
+  voterId      String
+  /// HMAC-SHA256 of the plaintext email — used for sign-in lookup + dedup.
+  /// Nullable to allow rolling rollout from plaintext rows.
+  emailHash    String?  @unique
+  voterIdHash  String?  @unique
+  passwordHash String
+  phone        String?
+  registeredAt DateTime @default(now())
+
+  eligibilities VoterEligibility[]
+  credentials   VoterCredential[]
+
+  @@map("voters")
+}
+
+/// Append-only credential history for a voter. Latest row is active.
+model VoterCredential {
+  id           String   @id @default(cuid())
+  voterId      String
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  voter Voter @relation(fields: [voterId], references: [id], onDelete: Cascade)
+
+  @@index([voterId])
+  @@map("voter_credentials")
+}
+
+/// One of: "draft" | "open" | "closed". Validated in the service layer.
+model Election {
+  id               String    @id @default(cuid())
+  name             String
+  description      String?
+  status           String    @default("draft")
+  createdAt        DateTime  @default(now())
+  openedAt         DateTime?
+  closedAt         DateTime?
+  /// Optional: auto-open the election at this UTC time (lazy — applied on next API read).
+  scheduledOpenAt  DateTime?
+  /// Optional: auto-close the election at this UTC time (lazy — applied on next API read).
+  scheduledCloseAt DateTime?
+
+  positions     Position[]
+  ballots       Ballot[]
+  eligibilities VoterEligibility[]
+  statusEvents  ElectionStatusEvent[]
+
+  @@map("elections")
+}
+
+/// Append-only log of every status transition (draft / open / closed). The
+/// latest row supersedes older ones; the `status` / `openedAt` / `closedAt`
+/// columns on Election are seed values only and are no longer mutated.
+model ElectionStatusEvent {
+  id               String   @id @default(cuid())
+  electionId       String
+  status           String
+  changedByAdminId String?
+  createdAt        DateTime @default(now())
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@index([electionId])
+  @@map("election_status_events")
+}
+
+/// Soft-delete record. Inserting a row marks the target as revoked. Deletion
+/// itself is forbidden — admins cannot UN-delete by simply removing this row.
+model Revocation {
+  id               String   @id @default(cuid())
+  /// "admin" | "voter" | "election" | "position" | "candidate"
+  targetType       String
+  targetId         String
+  reason           String?
+  revokedByAdminId String?
+  createdAt        DateTime @default(now())
+
+  @@unique([targetType, targetId])
+  @@index([targetType])
+  @@map("revocations")
+}
+
+model Position {
+  id          String   @id @default(cuid())
+  electionId  String
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+
+  election   Election    @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  candidates Candidate[]
+  choices    BallotChoice[]
+
+  @@index([electionId])
+  @@map("positions")
+}
+
+model Candidate {
+  id         String   @id @default(cuid())
+  positionId String
+  name       String
+  bio        String?
+  voterRef   String?
+  photoUrl   String?
+  createdAt  DateTime @default(now())
+
+  position Position       @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  choices  BallotChoice[]
+
+  @@index([positionId])
+  @@map("candidates")
+}
+
+/// Anonymous ballot — intentionally NOT linked to the voter who cast it.
+/// One-vote-per-voter is enforced via VoterEligibility, not via this row.
+model Ballot {
+  id          String   @id @default(cuid())
+  electionId  String
+  /// Random opaque token issued at submission. Useful for receipts; not linkable
+  /// back to a voter through any other table.
+  ballotToken String   @unique
+  submittedAt DateTime @default(now())
+
+  election Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  choices  BallotChoice[]
+
+  @@index([electionId])
+  @@map("ballots")
+}
+
+/// Tracks whether a registered voter has cast their ballot in an election.
+/// Holds NO link to the actual ballot they submitted, preserving secrecy.
+model VoterEligibility {
+  id         String   @id @default(cuid())
+  voterId    String
+  electionId String
+  votedAt    DateTime @default(now())
+
+  voter    Voter    @relation(fields: [voterId], references: [id], onDelete: Restrict)
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@unique([electionId, voterId])
+  @@index([electionId])
+  @@index([voterId])
+  @@map("voter_eligibility")
+}
+
+/// Append-only audit trail of every state-changing admin action.
+model AuditLog {
+  id         String   @id @default(cuid())
+  /// "admin" | "voter" | null (anonymous events, e.g. failed sign-in)
+  actorType  String?
+  actorId    String?
+  actorLabel String?
+  action     String
+  targetType String?
+  targetId   String?
+  details    String?
+  ip         String?
+  userAgent  String?
+  /// User-Agent parsed once at write time so the audit page can filter without
+  /// re-parsing on every render.
+  browser    String?
+  os         String?
+  deviceType String?
+  /// Vercel-injected geo (best-effort; null in local dev or self-hosted).
+  city      String?
+  region    String?
+  country   String?
+  latitude  Float?
+  longitude Float?
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([actorType])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+model BallotChoice {
+  id          String @id @default(cuid())
+  ballotId    String
+  positionId  String
+  candidateId String
+
+  ballot    Ballot    @relation(fields: [ballotId], references: [id], onDelete: Cascade)
+  position  Position  @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+
+  @@unique([ballotId, positionId])
+  @@index([ballotId])
+  @@index([positionId])
+  @@index([candidateId])
+  @@map("ballot_choices")
+}
+
+/// Deployment-wide branding, held in a single row pinned to id "singleton".
+/// Everything an organisation needs to make the platform its own lives here so
+/// it can be changed from the admin UI instead of the codebase. When the row is
+/// absent (fresh install) `getBranding()` falls back to neutral defaults.
+model OrganizationSettings {
+  id            String   @id @default("singleton")
+  /// Full legal name, e.g. "Nigerian Society of Engineers". Used on printed
+  /// result sheets and in credential emails.
+  orgName       String
+  /// Compact wordmark shown in the sidebar and on the sign-in screen.
+  orgShortName  String
+  /// Optional sub-heading, e.g. "Makurdi Branch Election".
+  tagline       String?
+  /// Blob URL of the uploaded logo. Null means render the wordmark alone.
+  logoUrl       String?
+  /// Seed colour for the brand-25..950 ramp, as #rrggbb.
+  brandColor    String   @default("#198a44")
+  /// What this organisation calls a voter's identifier, e.g. "NSE Number",
+  /// "Staff ID", "Membership No". Drives form labels, CSV headers and the
+  /// accepted column names on bulk import.
+  voterIdLabel  String   @default("Voter ID")
+  /// Display name on outgoing credential emails. Falls back to orgName.
+  emailFromName String?
+  /// Shown to voters who need help signing in.
+  supportEmail  String?
+  updatedAt     DateTime @updatedAt
+  updatedBy     String?
+
+  @@map("organization_settings")
+}
