@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/button/Button";
 import { BallotSkeleton } from "@/components/voting/skeletons";
 import { apiCall } from "@/lib/api-client";
+import { useBranding } from "@/context/BrandingContext";
 
 interface VoterMe {
   id: string;
@@ -47,6 +48,7 @@ type ViewState =
 type SelectionMap = Record<string, string>;
 
 export default function BallotPage() {
+  const { slug } = useBranding();
   const router = useRouter();
   const [view, setView] = useState<ViewState>({ kind: "loading" });
   const [selections, setSelections] = useState<SelectionMap>({});
@@ -59,12 +61,12 @@ export default function BallotPage() {
     apiCall<BallotContext>("/api/ballot-context").then((result) => {
       if (cancelled) return;
       if (!result.ok) {
-        router.replace("/");
+        router.replace(`/o/${slug}`);
         return;
       }
       const context = result.data;
       if (context.hasVoted) {
-        router.replace("/confirmation?status=already");
+        router.replace(`/o/${slug}/confirmation?status=already`);
         return;
       }
       if (!context.election) {
@@ -120,12 +122,12 @@ export default function BallotPage() {
       setReviewing(false);
       return;
     }
-    router.push("/confirmation?status=submitted");
+    router.push(`/o/${slug}/confirmation?status=submitted`);
   };
 
   const handleSignOut = async () => {
     await apiCall("/api/voters/sign-out", { method: "POST" });
-    router.replace("/");
+    router.replace(`/o/${slug}`);
   };
 
   if (view.kind === "loading") {
@@ -311,7 +313,7 @@ export default function BallotPage() {
 
       <p className="mt-6 text-center text-sm text-gray-400">
         Once submitted, your ballot cannot be changed.{" "}
-        <Link href="/" className="text-gray-500 underline hover:text-brand-500">
+        <Link href={`/o/${slug}`} className="text-gray-500 underline hover:text-brand-500">
           Cancel and return home
         </Link>
       </p>

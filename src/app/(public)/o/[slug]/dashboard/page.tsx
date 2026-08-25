@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 import StatusBadge from "@/components/voting/StatusBadge";
 import { DashboardSkeleton } from "@/components/voting/skeletons";
 import { apiCall } from "@/lib/api-client";
+import { useBranding } from "@/context/BrandingContext";
 
 interface ResultRow {
   candidateId: string;
@@ -53,6 +54,7 @@ const formatPct = (votes: number, total: number): string =>
   total === 0 ? "0%" : `${Math.round((votes / total) * 100)}%`;
 
 export default function DashboardPage() {
+  const { slug } = useBranding();
   const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -60,7 +62,7 @@ export default function DashboardPage() {
   const handleSignOut = async () => {
     setSigningOut(true);
     await apiCall("/api/voters/sign-out", { method: "POST" });
-    router.replace("/");
+    router.replace(`/o/${slug}`);
   };
 
   useEffect(() => {
@@ -145,7 +147,7 @@ export default function DashboardPage() {
       <footer className="border-t border-gray-200 pt-6 dark:border-gray-800">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
-            href="/ballot"
+            href={`/o/${slug}/ballot`}
             className="text-sm font-medium text-brand-500 transition-colors hover:text-brand-600 dark:text-brand-400"
           >
             Go to ballot
