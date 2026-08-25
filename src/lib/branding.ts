@@ -3,10 +3,9 @@ import { db } from "./db";
 import { log } from "./logger";
 import { DEFAULT_BRAND_COLOR } from "./brand-palette";
 
-/** The settings row is a singleton — one deployment, one organisation. */
-export const SETTINGS_ID = "singleton";
-
 export interface Branding {
+  organizationId: string | null;
+  slug: string | null;
   orgName: string;
   orgShortName: string;
   tagline: string | null;
@@ -18,10 +17,13 @@ export interface Branding {
 }
 
 /**
- * Neutral, organisation-free defaults. A fresh deployment boots and is fully
- * usable on these before an admin has configured anything.
+ * Neutral, organisation-free fallback. Used before a tenant is resolved (the
+ * platform area, the root page) and whenever a lookup fails, so a bad read
+ * degrades to plain styling rather than taking the page down.
  */
 export const BRANDING_DEFAULTS: Branding = {
+  organizationId: null,
+  slug: null,
   orgName: "Election Platform",
   orgShortName: "Elections",
   tagline: null,
@@ -32,37 +34,91 @@ export const BRANDING_DEFAULTS: Branding = {
   supportEmail: null,
 };
 
+type OrgRow = {
+  id: string;
+  slug: string;
+  orgName: string;
+  orgShortName: string;
+  tagline: string | null;
+  logoUrl: string | null;
+  brandColor: string;
+  voterIdLabel: string;
+  emailFromName: string | null;
+  supportEmail: string | null;
+};
+
+const SELECT = {
+  id: true,
+  slug: true,
+  orgName: true,
+  orgShortName: true,
+  tagline: true,
+  logoUrl: true,
+  brandColor: true,
+  voterIdLabel: true,
+  emailFromName: true,
+  supportEmail: true,
+} as const;
+
+function toBranding(row: OrgRow): Branding {
+  return {
+    organizationId: row.id,
+    slug: row.slug,
+    orgName: row.orgName,
+    orgShortName: row.orgShortName,
+    tagline: row.tagline,
+    logoUrl: row.logoUrl,
+    brandColor: row.brandColor,
+    voterIdLabel: row.voterIdLabel,
+    emailFromName: row.emailFromName?.trim() || row.orgName,
+    supportEmail: row.supportEmail,
+  };
+}
+
 /**
- * Read the branding for this deployment.
+ * Branding for one organisation, by id.
  *
- * Wrapped in React's `cache` so the many consumers in a single render (layout,
- * page, metadata) share one query. Any read failure — most likely the table not
- * existing yet on a not-quite-migrated deployment — degrades to defaults rather
- * than taking the whole app down over cosmetics.
+ * Wrapped in React's `cache` so the several consumers in a single render —
+ * layout, page, metadata — share one query per organisation.
  */
-export const getBranding = cache(async (): Promise<Branding> => {
-  try {
-    const row = await db.organizationSettings.findUnique({
-      where: { id: SETTINGS_ID },
-    });
-    if (!row) return BRANDING_DEFAULTS;
-    return {
-      orgName: row.orgName,
-      orgShortName: row.orgShortName,
-      tagline: row.tagline,
-      logoUrl: row.logoUrl,
-      brandColor: row.brandColor,
-      voterIdLabel: row.voterIdLabel,
-      emailFromName: row.emailFromName?.trim() || row.orgName,
-      supportEmail: row.supportEmail,
-    };
-  } catch (err) {
-    log.error("branding_read_failed", {
-      error: err instanceof Error ? err.message : "unknown",
-    });
-    return BRANDING_DEFAULTS;
-  }
-});
+export const getBrandingByOrgId = cache(
+  async (organizationId: string): Promise<Branding> => {
+    try {
+      const row = await db.organization.findUnique({
+        where: { id: organizationId },
+        select: SELECT,
+      });
+      return row ? toBranding(row) : BRANDING_DEFAULTS;
+    } catch (err) {
+      log.error("branding_read_failed", {
+        organizationId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      return BRANDING_DEFAULTS;
+    }
+  },
+);
+
+/** Branding for one organisation, by URL slug. Returns null when the slug does
+ * not exist, so callers can render a 404 rather than silently showing
+ * unbranded pages for a mistyped organisation. */
+export const getBrandingBySlug = cache(
+  async (slug: string): Promise<Branding | null> => {
+    try {
+      const row = await db.organization.findUnique({
+        where: { slug },
+        select: SELECT,
+      });
+      return row ? toBranding(row) : null;
+    } catch (err) {
+      log.error("branding_read_failed", {
+        slug,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      return null;
+    }
+  },
+);
 
 /**
  * Prefix for auto-generated voter IDs, derived from the organisation's short

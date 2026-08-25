@@ -18,6 +18,10 @@ import { hashPII } from "@/lib/pii";
 import { decryptVoterFields } from "@/lib/voter-pii";
 
 const Body = z.object({
+  /// The organisation whose sign-in page this was submitted from. The voter
+  /// lookup is scoped to it, so credentials issued by one organisation cannot
+  /// be used on another's page.
+  slug: z.string().trim().min(1, "Organisation is required").max(64),
   voterId: VoterIdInput,
   password: z.string().min(1, "Password is required").max(64),
 });
@@ -36,10 +40,19 @@ export async function POST(req: Request) {
 
   const parsed = await parseJson(req, Body);
   if (!parsed.ok) return parsed.response;
-  const { voterId, password } = parsed.data;
+  const { slug, voterId, password } = parsed.data;
+
+  const org = await db.organization.findUnique({
+    where: { slug },
+    select: { id: true },
+  });
+  if (!org) {
+    return NextResponse.json({ error: "Organisation not found" }, { status: 404 });
+  }
+  const organizationId = org.id;
 
   const idLimit = checkRateLimit({
-    key: `voter-signin:id:${voterId}`,
+    key: `voter-signin:id:${slug}:${voterId}`,
     limit: 5,
     windowMs: 5 * 60_000,
   });
@@ -50,9 +63,11 @@ export async function POST(req: Request) {
   // Primary lookup is by HMAC over the encrypted voterId column. Fall back
   // to plaintext match so any pre-encryption rows still authenticate.
   const voterIdHash = hashPII(voterId);
-  let voter = await db.voter.findUnique({ where: { voterIdHash } });
+  let voter = await db.voter.findUnique({
+    where: { organizationId_voterIdHash: { organizationId, voterIdHash } },
+  });
   if (!voter) {
-    voter = await db.voter.findFirst({ where: { voterId } });
+    voter = await db.voter.findFirst({ where: { organizationId, voterId } });
   }
 
   const revoked = voter ? await isRevoked("voter", voter.id) : false;
@@ -62,6 +77,7 @@ export async function POST(req: Request) {
     await audit({
       actorType: "voter",
       actorId: null,
+      organizationId,
       actorLabel: voterId,
       action: "voter.signin.failed",
       meta,
@@ -82,6 +98,7 @@ export async function POST(req: Request) {
   const decoded = decryptVoterFields(voter);
 
   await audit({
+    organizationId,
     actorType: "voter",
     actorId: voter.id,
     actorLabel: decoded.voterId,

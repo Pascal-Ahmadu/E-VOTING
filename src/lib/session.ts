@@ -10,6 +10,12 @@ export interface VoterSessionData {
   voterId?: string;
 }
 
+/** Platform operator session. A separate cookie from the tenant admin session,
+ * so holding one can never be mistaken for holding the other. */
+export interface PlatformSessionData {
+  platformAdminId?: string;
+}
+
 const sharedCookieOptions = {
   httpOnly: true,
   sameSite: "lax" as const,
@@ -29,6 +35,12 @@ const voterOptions: SessionOptions = {
   cookieOptions: sharedCookieOptions,
 };
 
+const platformOptions: SessionOptions = {
+  cookieName: "evoting_platform_session",
+  password: env.SESSION_SECRET,
+  cookieOptions: sharedCookieOptions,
+};
+
 export async function getAdminSession() {
   const cookieStore = await cookies();
   return getIronSession<AdminSessionData>(cookieStore, adminOptions);
@@ -37,4 +49,9 @@ export async function getAdminSession() {
 export async function getVoterSession() {
   const cookieStore = await cookies();
   return getIronSession<VoterSessionData>(cookieStore, voterOptions);
+}
+
+export async function getPlatformSession() {
+  const cookieStore = await cookies();
+  return getIronSession<PlatformSessionData>(cookieStore, platformOptions);
 }

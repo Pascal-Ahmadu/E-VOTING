@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { getBranding } from "./branding";
+import { getBrandingByOrgId } from "./branding";
 
 /** Escape text interpolated into the HTML email body. Voter names and the
  * configured labels are user-supplied, so they must not carry markup through. */
@@ -32,11 +32,13 @@ function normalizePhone(raw: string): string | null {
  *   SMTP_PASS – Gmail App Password (16 chars, no spaces)
  */
 export async function sendVoterCredentialsEmail({
+  organizationId,
   email,
   name,
   voterId,
   password,
 }: {
+  organizationId: string;
   email: string;
   name: string;
   voterId: string;
@@ -51,7 +53,8 @@ export async function sendVoterCredentialsEmail({
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  const { emailFromName, orgName, brandColor, voterIdLabel } = await getBranding();
+  const { emailFromName, orgName, brandColor, voterIdLabel } =
+    await getBrandingByOrgId(organizationId);
 
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
@@ -112,11 +115,13 @@ export async function sendVoterCredentialsEmail({
  *   INFOBIP_TEMPLATE_NAME – approved template name
  */
 export async function sendVoterCredentials({
+  organizationId,
   phone,
   name,
   voterId,
   password,
 }: {
+  organizationId: string;
   phone: string;
   name: string;
   voterId: string;
@@ -127,7 +132,7 @@ export async function sendVoterCredentials({
   const from = process.env.INFOBIP_SENDER || "447860088970";
   const templateName = process.env.INFOBIP_TEMPLATE_NAME ?? "test_whatsapp_template_en";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  const { voterIdLabel } = await getBranding();
+  const { voterIdLabel } = await getBrandingByOrgId(organizationId);
 
   if (!apiKey) {
     console.error("[Infobip] INFOBIP_API_KEY env var is not set — skipping send");

@@ -5,32 +5,39 @@ import { requireAdmin } from "@/lib/auth-guards";
 import { requireSameOrigin } from "@/lib/csrf";
 import { parseJson } from "@/lib/zod-helpers";
 import { audit, requestMeta } from "@/lib/audit";
-import { BRANDING_DEFAULTS, SETTINGS_ID } from "@/lib/branding";
 import { isHexColor } from "@/lib/brand-palette";
 
 /**
- * The raw stored settings, for the admin branding form.
+ * The signed-in admin's own organisation, for the branding form.
  *
- * Deliberately not `getBranding()`: that resolves blanks to their effective
- * values (emailFromName falls back to orgName), which would make "leave blank
- * to use the default" stop round-tripping — the field would come back filled in
- * and the next save would persist it. Rendering uses the resolved view; editing
- * needs the stored one, nulls intact.
+ * Admin-only, and scoped to the caller's organisation — the id never comes from
+ * the request, so one tenant cannot read another's settings by guessing an id.
+ *
+ * Deliberately returns stored values with nulls intact rather than the resolved
+ * view used for rendering: resolving a blank emailFromName to orgName here
+ * would stop "leave blank to use the default" round-tripping.
  */
 export async function GET() {
-  const row = await db.organizationSettings.findUnique({
-    where: { id: SETTINGS_ID },
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+
+  const branding = await db.organization.findUnique({
+    where: { id: guard.value.organizationId },
+    select: {
+      slug: true,
+      orgName: true,
+      orgShortName: true,
+      tagline: true,
+      logoUrl: true,
+      brandColor: true,
+      voterIdLabel: true,
+      emailFromName: true,
+      supportEmail: true,
+    },
   });
-  const branding = row ?? {
-    orgName: "",
-    orgShortName: "",
-    tagline: null,
-    logoUrl: null,
-    brandColor: BRANDING_DEFAULTS.brandColor,
-    voterIdLabel: BRANDING_DEFAULTS.voterIdLabel,
-    emailFromName: null,
-    supportEmail: null,
-  };
+  if (!branding) {
+    return NextResponse.json({ error: "Organisation not found" }, { status: 404 });
+  }
   return NextResponse.json({ branding });
 }
 
@@ -77,34 +84,31 @@ export async function PATCH(req: Request) {
   if (!parsed.ok) return parsed.response;
   const input = parsed.data;
 
-  const data = {
-    orgName: input.orgName,
-    orgShortName: input.orgShortName,
-    tagline: input.tagline || null,
-    brandColor: input.brandColor.toLowerCase(),
-    voterIdLabel: input.voterIdLabel,
-    emailFromName: input.emailFromName || null,
-    supportEmail: input.supportEmail ?? null,
-    updatedBy: guard.value.adminId,
-  };
-
-  const settings = await db.organizationSettings.upsert({
-    where: { id: SETTINGS_ID },
-    // logoUrl belongs to the dedicated upload route, so it is left alone here
-    // and only seeded when the row is created for the first time.
-    create: { id: SETTINGS_ID, logoUrl: BRANDING_DEFAULTS.logoUrl, ...data },
-    update: data,
+  // The slug is deliberately not editable here: it is the tenant's URL, and
+  // changing it would break every link already sent to voters.
+  const branding = await db.organization.update({
+    where: { id: guard.value.organizationId },
+    data: {
+      orgName: input.orgName,
+      orgShortName: input.orgShortName,
+      tagline: input.tagline || null,
+      brandColor: input.brandColor.toLowerCase(),
+      voterIdLabel: input.voterIdLabel,
+      emailFromName: input.emailFromName || null,
+      supportEmail: input.supportEmail ?? null,
+    },
   });
 
   await audit({
+    organizationId: guard.value.organizationId,
     actorType: "admin",
     actorId: guard.value.adminId,
     action: "settings.branding.update",
-    targetType: "settings",
-    targetId: SETTINGS_ID,
-    details: { orgName: data.orgName, brandColor: data.brandColor },
+    targetType: "organization",
+    targetId: guard.value.organizationId,
+    details: { orgName: branding.orgName, brandColor: branding.brandColor },
     meta: requestMeta(req),
   });
 
-  return NextResponse.json({ branding: settings });
+  return NextResponse.json({ branding });
 }
