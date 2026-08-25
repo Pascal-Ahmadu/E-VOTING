@@ -42,11 +42,6 @@ async function seedPlatformAdmin(seed: {
   name: string;
   passcode: string;
 }): Promise<void> {
-  if ((await db.platformAdmin.count()) > 0) {
-    console.log("[seed] platform admin already exists — skipping");
-    return;
-  }
-
   const email = (process.env.SEED_PLATFORM_EMAIL ?? seed.email).toLowerCase();
   const name = process.env.SEED_PLATFORM_NAME ?? seed.name;
   const passcode = process.env.SEED_PLATFORM_PASSCODE ?? seed.passcode;
@@ -63,11 +58,6 @@ async function seedFirstOrganization(seed: {
   name: string;
   passcode: string;
 }): Promise<void> {
-  if ((await db.organization.count()) > 0) {
-    console.log("[seed] organisation already exists — skipping");
-    return;
-  }
-
   const slug = process.env.SEED_ORG_SLUG ?? "default";
   const org = await db.organization.create({
     data: {
@@ -92,9 +82,20 @@ async function seedFirstOrganization(seed: {
 }
 
 async function main() {
+  const needsPlatformAdmin = (await db.platformAdmin.count()) === 0;
+  const needsOrganization = (await db.organization.count()) === 0;
+
+  // Check what is missing before asking for credentials. This runs on every
+  // deploy, and an already-seeded database needs nothing — demanding the
+  // SEED_ADMIN_* vars up front would fail those builds for no reason.
+  if (!needsPlatformAdmin && !needsOrganization) {
+    console.log("[seed] platform admin and organisation already exist — nothing to seed");
+    return;
+  }
+
   const seed = requireSeedEnv();
-  await seedPlatformAdmin(seed);
-  await seedFirstOrganization(seed);
+  if (needsPlatformAdmin) await seedPlatformAdmin(seed);
+  if (needsOrganization) await seedFirstOrganization(seed);
 }
 
 main()
