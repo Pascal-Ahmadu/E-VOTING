@@ -10,7 +10,7 @@ import { generateVoterId, generatePassword } from "@/lib/voter-codegen";
 import { getRevokedIds, isRevoked, unrevoke } from "@/lib/revocation";
 import { sendVoterCredentials, sendVoterCredentialsEmail } from "@/lib/messaging";
 import { Prisma } from "@prisma/client";
-import { getBranding } from "@/lib/branding";
+import { getBrandingByOrgId } from "@/lib/branding";
 
 interface ImportedVoter {
   name: string;
@@ -109,13 +109,14 @@ function splitCSVLine(line: string): string[] {
 async function makeUniqueVoterId(
   existingHashes: Set<string>,
   prefix: string,
+  organizationId: string,
 ): Promise<string | null> {
   for (let i = 0; i < 50; i++) {
     const id = generateVoterId(prefix);
     const hash = hashPII(id);
     if (existingHashes.has(hash)) continue;
     const inDb = await db.voter.findUnique({
-      where: { voterIdHash: hash },
+      where: { organizationId_voterIdHash: { organizationId, voterIdHash: hash } },
       select: { id: true },
     });
     if (!inDb) {
@@ -146,7 +147,8 @@ export async function POST(req: Request) {
   }
 
   const text = await (file as File).text();
-  const { voterIdLabel } = await getBranding();
+  const { organizationId } = guard.value;
+  const { voterIdLabel } = await getBrandingByOrgId(organizationId);
   const rows = parseCSV(text, voterIdLabel);
 
   if (rows.length === 0) {
@@ -167,7 +169,7 @@ export async function POST(req: Request) {
   const sendPromises: Promise<boolean>[] = [];
 
   // Exclude revoked (soft-deleted) voters from all duplicate checks so they can be re-registered.
-  const revokedIds = await getRevokedIds("voter");
+  const revokedIds = await getRevokedIds("voter", guard.value.organizationId);
   const notRevoked = revokedIds.length > 0 ? { id: { notIn: revokedIds } } : {};
 
   // Track voter ID hashes assigned in this batch to avoid duplicates within the batch
@@ -204,8 +206,14 @@ export async function POST(req: Request) {
     }
 
     // Check for an existing voter by email or voter ID (including revoked ones for restore)
-    const existingByEmail = await db.voter.findFirst({ where: { emailHash }, select: { id: true } });
-    const existingByVoterId = await db.voter.findFirst({ where: { voterIdHash: voterIdHashCheck }, select: { id: true } });
+    const existingByEmail = await db.voter.findFirst({
+      where: { organizationId, emailHash },
+      select: { id: true },
+    });
+    const existingByVoterId = await db.voter.findFirst({
+      where: { organizationId, voterIdHash: voterIdHashCheck },
+      select: { id: true },
+    });
     const existingMatch = existingByEmail ?? existingByVoterId;
 
     if (existingMatch) {
@@ -221,8 +229,8 @@ export async function POST(req: Request) {
         data: { ...encrypted, passwordHash: await hashSecret(password), registeredAt: new Date() },
       });
       await unrevoke("voter", existingMatch.id);
-      sendPromises.push(sendVoterCredentialsEmail({ email: row.email, name: row.name, voterId: row.voterId, password }));
-      if (row.phone) sendPromises.push(sendVoterCredentials({ phone: row.phone, name: row.name, voterId: row.voterId, password }));
+      sendPromises.push(sendVoterCredentialsEmail({ organizationId, email: row.email, name: row.name, voterId: row.voterId, password }));
+      if (row.phone) sendPromises.push(sendVoterCredentials({ organizationId, phone: row.phone, name: row.name, voterId: row.voterId, password }));
       batchVoterIdHashes.add(voterIdHashCheck);
       created.push({ name: row.name, email: row.email, voterId: row.voterId, password, phone: row.phone || undefined });
       continue;
@@ -237,12 +245,13 @@ export async function POST(req: Request) {
     try {
       await db.voter.create({
         data: {
+          organizationId,
           ...encrypted,
           passwordHash: await hashSecret(password),
         },
       });
-      sendPromises.push(sendVoterCredentialsEmail({ email: row.email, name: row.name, voterId, password }));
-      if (row.phone) sendPromises.push(sendVoterCredentials({ phone: row.phone, name: row.name, voterId, password }));
+      sendPromises.push(sendVoterCredentialsEmail({ organizationId, email: row.email, name: row.name, voterId, password }));
+      if (row.phone) sendPromises.push(sendVoterCredentials({ organizationId, phone: row.phone, name: row.name, voterId, password }));
       created.push({ name: row.name, email: row.email, voterId, password, phone: row.phone || undefined });
     } catch (err) {
       if (

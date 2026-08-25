@@ -24,8 +24,8 @@ export async function POST(
   if (await isRevoked("election", id)) {
     return NextResponse.json({ error: "Election not found" }, { status: 404 });
   }
-  const election = await db.election.findUnique({
-    where: { id },
+  const election = await db.election.findFirst({
+    where: { id, organizationId: guard.value.organizationId },
     select: {
       id: true,
       name: true,
@@ -48,8 +48,8 @@ export async function POST(
 
   // Filter out revoked positions and candidates from the readiness check.
   const [revokedPositionIds, revokedCandidateIds] = await Promise.all([
-    getRevokedIds("position"),
-    getRevokedIds("candidate"),
+    getRevokedIds("position", guard.value.organizationId),
+    getRevokedIds("candidate", guard.value.organizationId),
   ]);
   const revPos = new Set(revokedPositionIds);
   const revCand = new Set(revokedCandidateIds);
@@ -78,7 +78,7 @@ export async function POST(
   }
 
   // Append events: close any currently-open election, then open this one.
-  const currentlyOpen = await findElectionIdsByStatus("open");
+  const currentlyOpen = await findElectionIdsByStatus("open", guard.value.organizationId);
   for (const otherId of currentlyOpen) {
     if (otherId !== id) {
       await transitionElection({

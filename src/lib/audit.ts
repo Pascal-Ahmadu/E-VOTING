@@ -18,6 +18,9 @@ export interface RequestMeta {
 }
 
 export interface AuditEntry {
+  /// Owning tenant. Null only for platform-level events, which belong to no
+  /// organisation.
+  organizationId?: string | null;
   // Canonical shape
   actorType?: ActorType;
   actorId?: string | null;
@@ -111,6 +114,7 @@ export async function audit(entry: AuditEntry): Promise<void> {
   try {
     await db.auditLog.create({
       data: {
+        organizationId: entry.organizationId ?? null,
         actorType,
         actorId,
         actorLabel,

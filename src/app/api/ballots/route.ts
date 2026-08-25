@@ -34,8 +34,8 @@ export async function POST(req: Request) {
   if (!parsed.ok) return parsed.response;
   const { electionId, choices } = parsed.data;
 
-  const election = await db.election.findUnique({
-    where: { id: electionId },
+  const election = await db.election.findFirst({
+    where: { id: electionId, organizationId: guard.value.organizationId },
     select: {
       positions: {
         select: { id: true, candidates: { select: { id: true } } },

@@ -4,7 +4,7 @@ import "./globals.css";
 import { SidebarProvider } from "@/context/SidebarContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { BrandingProvider } from "@/context/BrandingContext";
-import { getBranding } from "@/lib/branding";
+import { BRANDING_DEFAULTS } from "@/lib/branding";
 import { brandColorCss } from "@/lib/brand-palette";
 
 const lato = Lato({
@@ -14,7 +14,9 @@ const lato = Lato({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const branding = await getBranding();
+  // The tenant is not known this high up; per-organisation titles and icons are
+  // set by the /o/[slug] layout, which overrides these.
+  const branding = BRANDING_DEFAULTS;
   return {
     title: branding.orgShortName,
     description:
@@ -30,7 +32,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const branding = await getBranding();
+  const branding = BRANDING_DEFAULTS;
 
   return (
     <html lang="en">

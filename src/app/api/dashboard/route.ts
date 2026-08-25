@@ -25,13 +25,13 @@ export async function GET() {
 
   const [openIds, closedIds, totalVoters, revokedElectionIds, revokedPositionIds, revokedCandidateIds, revokedVoterIds] =
     await Promise.all([
-      findElectionIdsByStatus("open"),
-      findElectionIdsByStatus("closed"),
-      db.voter.count(),
-      getRevokedIds("election"),
-      getRevokedIds("position"),
-      getRevokedIds("candidate"),
-      getRevokedIds("voter"),
+      findElectionIdsByStatus("open", guard.value.organizationId),
+      findElectionIdsByStatus("closed", guard.value.organizationId),
+      db.voter.count({ where: { organizationId: guard.value.organizationId } }),
+      getRevokedIds("election", guard.value.organizationId),
+      getRevokedIds("position", guard.value.organizationId),
+      getRevokedIds("candidate", guard.value.organizationId),
+      getRevokedIds("voter", guard.value.organizationId),
     ]);
 
   const revElec = new Set(revokedElectionIds);

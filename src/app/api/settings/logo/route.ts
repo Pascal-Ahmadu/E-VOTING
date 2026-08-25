@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth-guards";
 import { requireSameOrigin } from "@/lib/csrf";
 import { audit, requestMeta } from "@/lib/audit";
-import { BRANDING_DEFAULTS, SETTINGS_ID } from "@/lib/branding";
 
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 const MAX_BYTES = 1 * 1024 * 1024; // 1 MB — a logo has no business being larger
@@ -16,28 +15,13 @@ const EXT: Record<string, string> = {
   "image/svg+xml": "svg",
 };
 
-/** The settings row may not exist yet on a fresh install, so seed it with
- * defaults before attaching a logo. */
-async function ensureSettingsRow() {
-  return db.organizationSettings.upsert({
-    where: { id: SETTINGS_ID },
-    create: {
-      id: SETTINGS_ID,
-      orgName: BRANDING_DEFAULTS.orgName,
-      orgShortName: BRANDING_DEFAULTS.orgShortName,
-      brandColor: BRANDING_DEFAULTS.brandColor,
-      voterIdLabel: BRANDING_DEFAULTS.voterIdLabel,
-    },
-    update: {},
-  });
-}
-
 export async function POST(req: Request) {
   const csrf = requireSameOrigin(req);
   if (csrf) return csrf;
 
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
+  const { organizationId, adminId } = guard.value;
 
   let formData: FormData;
   try {
@@ -62,7 +46,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Logo must be under 1 MB" }, { status: 400 });
   }
 
-  const existing = await ensureSettingsRow();
+  const existing = await db.organization.findUnique({
+    where: { id: organizationId },
+    select: { logoUrl: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: "Organisation not found" }, { status: 404 });
+  }
 
   // Drop the previous logo so Blob storage does not accumulate orphans.
   if (existing.logoUrl) {
@@ -73,24 +63,27 @@ export async function POST(req: Request) {
     }
   }
 
-  // `addRandomSuffix` gives each upload a distinct URL, which sidesteps CDN
-  // caching of the previous logo at a fixed path.
-  const blob = await put(`branding/logo.${EXT[image.type]}`, image, {
-    access: "public",
-    addRandomSuffix: true,
-  });
+  // Keyed by organisation so tenants cannot overwrite each other's logo, and
+  // `addRandomSuffix` gives each upload a distinct URL, sidestepping CDN
+  // caching of the previous one.
+  const blob = await put(
+    `branding/${organizationId}/logo.${EXT[image.type]}`,
+    image,
+    { access: "public", addRandomSuffix: true },
+  );
 
-  await db.organizationSettings.update({
-    where: { id: SETTINGS_ID },
-    data: { logoUrl: blob.url, updatedBy: guard.value.adminId },
+  await db.organization.update({
+    where: { id: organizationId },
+    data: { logoUrl: blob.url },
   });
 
   await audit({
+    organizationId,
     actorType: "admin",
-    actorId: guard.value.adminId,
+    actorId: adminId,
     action: "settings.logo.update",
-    targetType: "settings",
-    targetId: SETTINGS_ID,
+    targetType: "organization",
+    targetId: organizationId,
     meta: requestMeta(req),
   });
 
@@ -103,9 +96,10 @@ export async function DELETE(req: Request) {
 
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
+  const { organizationId, adminId } = guard.value;
 
-  const existing = await db.organizationSettings.findUnique({
-    where: { id: SETTINGS_ID },
+  const existing = await db.organization.findUnique({
+    where: { id: organizationId },
     select: { logoUrl: true },
   });
 
@@ -115,16 +109,17 @@ export async function DELETE(req: Request) {
     } catch {
       // Non-fatal
     }
-    await db.organizationSettings.update({
-      where: { id: SETTINGS_ID },
-      data: { logoUrl: null, updatedBy: guard.value.adminId },
+    await db.organization.update({
+      where: { id: organizationId },
+      data: { logoUrl: null },
     });
     await audit({
+      organizationId,
       actorType: "admin",
-      actorId: guard.value.adminId,
+      actorId: adminId,
       action: "settings.logo.remove",
-      targetType: "settings",
-      targetId: SETTINGS_ID,
+      targetType: "organization",
+      targetId: organizationId,
       meta: requestMeta(req),
     });
   }

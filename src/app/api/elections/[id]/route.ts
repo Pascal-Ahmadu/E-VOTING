@@ -22,8 +22,8 @@ export async function GET(
   // Apply any pending schedule before reading state (lazy scheduler)
   await applySchedule(id);
 
-  const election = await db.election.findUnique({
-    where: { id },
+  const election = await db.election.findFirst({
+    where: { id, organizationId: guard.value.organizationId },
     select: {
       id: true,
       name: true,
@@ -60,8 +60,8 @@ export async function GET(
 
   // Filter out revoked positions / candidates from the response.
   const [revokedPositionIds, revokedCandidateIds, state] = await Promise.all([
-    getRevokedIds("position"),
-    getRevokedIds("candidate"),
+    getRevokedIds("position", guard.value.organizationId),
+    getRevokedIds("candidate", guard.value.organizationId),
     getElectionState(id),
   ]);
   const revPosSet = new Set(revokedPositionIds);
@@ -138,8 +138,8 @@ export async function DELETE(
   if (!guard.ok) return guard.response;
 
   const { id } = await ctx.params;
-  const election = await db.election.findUnique({
-    where: { id },
+  const election = await db.election.findFirst({
+    where: { id, organizationId: guard.value.organizationId },
     select: { name: true, _count: { select: { ballots: true } } },
   });
   if (!election) {
@@ -158,6 +158,7 @@ export async function DELETE(
     );
   }
   await revoke({
+    organizationId: guard.value.organizationId,
     targetType: "election",
     targetId: id,
     revokedByAdminId: guard.value.adminId,
@@ -201,8 +202,8 @@ export async function PATCH(
   if (await isRevoked("election", id)) {
     return NextResponse.json({ error: "Election not found" }, { status: 404 });
   }
-  const election = await db.election.findUnique({
-    where: { id },
+  const election = await db.election.findFirst({
+    where: { id, organizationId: guard.value.organizationId },
     select: { name: true },
   });
   if (!election) {

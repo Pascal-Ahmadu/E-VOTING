@@ -11,16 +11,19 @@ datasource db {
 }
 
 model Admin {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  email          String   @unique
   /// Initial seeded passcode. After the first credential rotation this column
   /// is no longer authoritative — the latest AdminCredential row is.
-  passcodeHash String
-  createdAt    DateTime @default(now())
+  passcodeHash   String
+  createdAt      DateTime @default(now())
 
-  credentials AdminCredential[]
+  credentials  AdminCredential[]
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  @@index([organizationId])
   @@map("admins")
 }
 
@@ -40,24 +43,29 @@ model AdminCredential {
 }
 
 model Voter {
-  id           String   @id @default(cuid())
+  id             String   @id @default(cuid())
+  organizationId String
   /// `name`, `email`, and `voterId` are stored AES-256-GCM encrypted.
   /// Each insert uses a fresh nonce, so ciphertext equality means nothing —
   /// uniqueness is enforced via the `*Hash` columns instead.
-  name         String
-  email        String
-  voterId      String
+  name           String
+  email          String
+  voterId        String
   /// HMAC-SHA256 of the plaintext email — used for sign-in lookup + dedup.
   /// Nullable to allow rolling rollout from plaintext rows.
-  emailHash    String?  @unique
-  voterIdHash  String?  @unique
-  passwordHash String
-  phone        String?
-  registeredAt DateTime @default(now())
+  emailHash      String?
+  voterIdHash    String?
+  passwordHash   String
+  phone          String?
+  registeredAt   DateTime @default(now())
 
   eligibilities VoterEligibility[]
   credentials   VoterCredential[]
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  @@unique([organizationId, emailHash])
+  @@unique([organizationId, voterIdHash])
+  @@index([organizationId])
   @@map("voters")
 }
 
@@ -77,6 +85,7 @@ model VoterCredential {
 /// One of: "draft" | "open" | "closed". Validated in the service layer.
 model Election {
   id               String    @id @default(cuid())
+  organizationId   String
   name             String
   description      String?
   status           String    @default("draft")
@@ -92,7 +101,9 @@ model Election {
   ballots       Ballot[]
   eligibilities VoterEligibility[]
   statusEvents  ElectionStatusEvent[]
+  organization  Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  @@index([organizationId])
   @@map("elections")
 }
 
@@ -116,6 +127,7 @@ model ElectionStatusEvent {
 /// itself is forbidden — admins cannot UN-delete by simply removing this row.
 model Revocation {
   id               String   @id @default(cuid())
+  organizationId   String
   /// "admin" | "voter" | "election" | "position" | "candidate"
   targetType       String
   targetId         String
@@ -123,8 +135,11 @@ model Revocation {
   revokedByAdminId String?
   createdAt        DateTime @default(now())
 
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   @@unique([targetType, targetId])
   @@index([targetType])
+  @@index([organizationId])
   @@map("revocations")
 }
 
@@ -135,7 +150,7 @@ model Position {
   description String?
   createdAt   DateTime @default(now())
 
-  election   Election    @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  election   Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
   candidates Candidate[]
   choices    BallotChoice[]
 
@@ -195,30 +210,35 @@ model VoterEligibility {
 
 /// Append-only audit trail of every state-changing admin action.
 model AuditLog {
-  id         String   @id @default(cuid())
+  id             String   @id @default(cuid())
+  /// Null for platform-level events, which belong to no tenant.
+  organizationId String?
   /// "admin" | "voter" | null (anonymous events, e.g. failed sign-in)
-  actorType  String?
-  actorId    String?
-  actorLabel String?
-  action     String
-  targetType String?
-  targetId   String?
-  details    String?
-  ip         String?
-  userAgent  String?
+  actorType      String?
+  actorId        String?
+  actorLabel     String?
+  action         String
+  targetType     String?
+  targetId       String?
+  details        String?
+  ip             String?
+  userAgent      String?
   /// User-Agent parsed once at write time so the audit page can filter without
   /// re-parsing on every render.
-  browser    String?
-  os         String?
-  deviceType String?
+  browser        String?
+  os             String?
+  deviceType     String?
   /// Vercel-injected geo (best-effort; null in local dev or self-hosted).
-  city      String?
-  region    String?
-  country   String?
-  latitude  Float?
-  longitude Float?
-  createdAt DateTime @default(now())
+  city           String?
+  region         String?
+  country        String?
+  latitude       Float?
+  longitude      Float?
+  createdAt      DateTime @default(now())
 
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
   @@index([actorId])
   @@index([actorType])
   @@index([action])
@@ -243,33 +263,45 @@ model BallotChoice {
   @@map("ballot_choices")
 }
 
-/// Deployment-wide branding, held in a single row pinned to id "singleton".
-/// Everything an organisation needs to make the platform its own lives here so
-/// it can be changed from the admin UI instead of the codebase. When the row is
-/// absent (fresh install) `getBranding()` falls back to neutral defaults.
-model OrganizationSettings {
-  id            String   @id @default("singleton")
-  /// Full legal name, e.g. "Nigerian Society of Engineers". Used on printed
-  /// result sheets and in credential emails.
-  orgName       String
-  /// Compact wordmark shown in the sidebar and on the sign-in screen.
-  orgShortName  String
-  /// Optional sub-heading, e.g. "Makurdi Branch Election".
-  tagline       String?
-  /// Blob URL of the uploaded logo. Null means render the wordmark alone.
-  logoUrl       String?
-  /// Seed colour for the brand-25..950 ramp, as #rrggbb.
-  brandColor    String   @default("#198a44")
-  /// What this organisation calls a voter's identifier, e.g. "NSE Number",
-  /// "Staff ID", "Membership No". Drives form labels, CSV headers and the
-  /// accepted column names on bulk import.
-  voterIdLabel  String   @default("Voter ID")
-  /// Display name on outgoing credential emails. Falls back to orgName.
-  emailFromName String?
-  /// Shown to voters who need help signing in.
-  supportEmail  String?
-  updatedAt     DateTime @updatedAt
-  updatedBy     String?
+/// A tenant. Everything an organisation owns — admins, voters, elections,
+/// audit trail — hangs off this row, and every query is scoped by it.
+model Organization {
+  id   String @id @default(cuid())
+  /// URL segment identifying the tenant, e.g. "acme" -> /o/acme
+  slug String @unique
 
-  @@map("organization_settings")
+  /// Branding. Voters only ever see these; the platform name never appears.
+  orgName       String
+  orgShortName  String
+  tagline       String?
+  logoUrl       String?
+  brandColor    String  @default("#198a44")
+  /// What this organisation calls a voter's identifier, e.g. "Membership No".
+  voterIdLabel  String  @default("Voter ID")
+  emailFromName String?
+  supportEmail  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  admins      Admin[]
+  voters      Voter[]
+  elections   Election[]
+  auditLogs   AuditLog[]
+  revocations Revocation[]
+
+  @@map("organizations")
+}
+
+/// Platform operator, above all tenants. Creates organisations and their first
+/// admin. Deliberately a separate table and a separate session cookie from
+/// Admin, so a tenant admin can never escalate into platform scope.
+model PlatformAdmin {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passcodeHash String
+  createdAt    DateTime @default(now())
+
+  @@map("platform_admins")
 }

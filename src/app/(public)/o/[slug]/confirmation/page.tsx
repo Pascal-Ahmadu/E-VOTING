@@ -23,7 +23,7 @@ function ConfirmationSkeleton() {
 
 function ConfirmationContent() {
   const params = useSearchParams();
-  const { voterIdLabel } = useBranding();
+  const { slug, voterIdLabel } = useBranding();
   const status = params.get("status") === "already" ? "already" : "submitted";
 
   const headline =
@@ -60,13 +60,13 @@ function ConfirmationContent() {
       <p className="mt-3 text-base text-gray-500 dark:text-gray-400">{message}</p>
       <div className="mt-7 flex flex-col items-stretch gap-3">
         <Link
-          href="/dashboard"
+          href={`/o/${slug}/dashboard`}
           className="inline-flex min-h-[52px] items-center justify-center rounded-lg bg-brand-500 px-6 py-4 text-base font-medium text-white shadow-theme-xs transition-colors hover:bg-brand-600"
         >
           View live results
         </Link>
         <Link
-          href="/"
+          href={`/o/${slug}`}
           className="text-base text-gray-500 hover:text-brand-500 dark:text-gray-400"
         >
           Return to start

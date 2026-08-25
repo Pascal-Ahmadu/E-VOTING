@@ -14,7 +14,12 @@ export async function GET(req: Request) {
   const action = url.searchParams.get("action")?.trim();
   const q = url.searchParams.get("q")?.trim();
 
-  const where: Prisma.AuditLogWhereInput = {};
+  // Seeded with the tenant filter so every branch below narrows within it —
+  // the audit trail carries IPs, geo and actor labels, so a leak here is a
+  // leak of another organisation's operational history.
+  const where: Prisma.AuditLogWhereInput = {
+    organizationId: guard.value.organizationId,
+  };
   if (actorType === "admin" || actorType === "voter") {
     where.actorType = actorType;
   }

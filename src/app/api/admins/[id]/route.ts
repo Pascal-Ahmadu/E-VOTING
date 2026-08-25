@@ -25,7 +25,7 @@ export async function DELETE(
   }
 
   const total = await db.admin.count();
-  const revokedAdminIds = await getRevokedIds("admin");
+  const revokedAdminIds = await getRevokedIds("admin", guard.value.organizationId);
   const active = total - revokedAdminIds.length;
   if (active <= 1) {
     return NextResponse.json(
@@ -34,8 +34,8 @@ export async function DELETE(
     );
   }
 
-  const target = await db.admin.findUnique({
-    where: { id },
+  const target = await db.admin.findFirst({
+    where: { id, organizationId: guard.value.organizationId },
     select: { email: true },
   });
   if (!target) {
@@ -49,6 +49,7 @@ export async function DELETE(
   }
   // INSERT revocation row (no DELETE) — physical record persists for audit.
   await revoke({
+    organizationId: guard.value.organizationId,
     targetType: "admin",
     targetId: id,
     revokedByAdminId: currentAdminId,

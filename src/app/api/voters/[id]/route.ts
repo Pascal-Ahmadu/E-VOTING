@@ -17,8 +17,8 @@ export async function DELETE(
   if (!guard.ok) return guard.response;
 
   const { id } = await ctx.params;
-  const voterRow = await db.voter.findUnique({
-    where: { id },
+  const voterRow = await db.voter.findFirst({
+    where: { id, organizationId: guard.value.organizationId },
     select: { email: true, voterId: true, name: true },
   });
   if (!voterRow) {
@@ -33,6 +33,7 @@ export async function DELETE(
   const voter = decryptVoterFields(voterRow);
   // INSERT revocation row instead of DELETE — preserves history.
   await revoke({
+    organizationId: guard.value.organizationId,
     targetType: "voter",
     targetId: id,
     revokedByAdminId: guard.value.adminId,

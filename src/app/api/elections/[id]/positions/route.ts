@@ -30,8 +30,8 @@ export async function POST(
       ? parsed.data.description
       : null;
 
-  const election = await db.election.findUnique({
-    where: { id },
+  const election = await db.election.findFirst({
+    where: { id, organizationId: guard.value.organizationId },
     select: { status: true },
   });
   if (!election) {

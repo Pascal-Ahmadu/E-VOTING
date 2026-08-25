@@ -5,7 +5,7 @@ import { getRevokedIds, isRevoked } from "@/lib/revocation";
 import { decryptVoterFields } from "@/lib/voter-pii";
 import { getElectionState } from "@/lib/election-state";
 import { applySchedule } from "@/lib/election-state";
-import { getBranding } from "@/lib/branding";
+import { getBrandingByOrgId } from "@/lib/branding";
 
 function cell(value: string | number | null | undefined): string {
   const str = String(value ?? "");
@@ -33,8 +33,8 @@ export async function GET(
   await applySchedule(id);
 
   // ── 1. Election + positions + candidates ───────────────────────────────────
-  const election = await db.election.findUnique({
-    where: { id },
+  const election = await db.election.findFirst({
+    where: { id, organizationId: guard.value.organizationId },
     select: {
       id: true,
       name: true,
@@ -59,8 +59,8 @@ export async function GET(
 
   // ── 2. Filter revoked positions / candidates ───────────────────────────────
   const [revokedPositionIds, revokedCandidateIds, state] = await Promise.all([
-    getRevokedIds("position"),
-    getRevokedIds("candidate"),
+    getRevokedIds("position", guard.value.organizationId),
+    getRevokedIds("candidate", guard.value.organizationId),
     getElectionState(id),
   ]);
   const revPos = new Set(revokedPositionIds);
@@ -84,11 +84,14 @@ export async function GET(
   }
 
   // ── 4. Voter list + participation ──────────────────────────────────────────
-  const revokedVoterIds = await getRevokedIds("voter");
+  const revokedVoterIds = await getRevokedIds("voter", guard.value.organizationId);
   const revVoters = new Set(revokedVoterIds);
 
   const [allVoters, participated] = await Promise.all([
     db.voter.findMany({
+      // Without this filter the exported CSV carries every organisation's
+      // voter roll — names, emails and phone numbers.
+      where: { organizationId: guard.value.organizationId },
       orderBy: { registeredAt: "asc" },
       select: { id: true, name: true, email: true, voterId: true, phone: true, registeredAt: true },
     }),
@@ -144,7 +147,7 @@ export async function GET(
   lines.push("");
 
   // Voter participation
-  const { voterIdLabel } = await getBranding();
+  const { voterIdLabel } = await getBrandingByOrgId(guard.value.organizationId);
   lines.push(row(voterIdLabel, "Name", "Email", "Phone", "Registered", "Voted", "Voted At"));
   for (const v of activeVoters) {
     const voted = votedMap.has(v.id);

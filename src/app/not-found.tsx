@@ -2,10 +2,10 @@ import GridShape from "@/components/common/GridShape";
 import Image from "next/image";
 import Link from "next/link";
 import React from "react";
-import { getBranding } from "@/lib/branding";
+import { BRANDING_DEFAULTS } from "@/lib/branding";
 
-export default async function NotFound() {
-  const { orgShortName } = await getBranding();
+export default function NotFound() {
+  const { orgShortName } = BRANDING_DEFAULTS;
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen p-6 overflow-hidden z-1">
       <GridShape />
