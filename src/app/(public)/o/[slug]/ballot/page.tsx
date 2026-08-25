@@ -78,7 +78,7 @@ export default function BallotPage() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, slug]);
 
   const positions = useMemo(
     () =>

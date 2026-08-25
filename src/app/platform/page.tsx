@@ -60,6 +60,13 @@ export default function PlatformPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [slugEdited, setSlugEdited] = useState(false);
+  // Shown after creation: the new admin has no way to know where to sign in or
+  // where to send their voters unless we spell it out here.
+  const [created, setCreated] = useState<
+    { slug: string; orgName: string; adminEmail: string } | null
+  >(null);
+
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
 
   const refresh = useCallback(async () => {
     const res = await apiCall<{ organizations: OrganizationRow[] }>(
@@ -112,6 +119,11 @@ export default function PlatformPage() {
       setError(res.error);
       return;
     }
+    setCreated({
+      slug: form.slug,
+      orgName: form.orgName,
+      adminEmail: form.adminEmail,
+    });
     setForm(EMPTY);
     setSlugEdited(false);
     setAdding(false);
@@ -158,6 +170,47 @@ export default function PlatformPage() {
         <p role="alert" className="text-sm text-error-500">
           {error}
         </p>
+      )}
+
+      {created && (
+        <div className="rounded-2xl border border-success-500/30 bg-success-500/5 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+                {created.orgName} is ready
+              </h2>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                Send these to {created.adminEmail}, along with the passcode you
+                set. Nothing else is emailed automatically.
+              </p>
+              <dl className="mt-4 space-y-2 text-sm">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <dt className="w-32 shrink-0 text-gray-500 dark:text-gray-400">
+                    Administrator
+                  </dt>
+                  <dd>
+                    <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700">
+                      {origin}/admin/sign-in
+                    </code>
+                  </dd>
+                </div>
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <dt className="w-32 shrink-0 text-gray-500 dark:text-gray-400">
+                    Voters
+                  </dt>
+                  <dd>
+                    <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700">
+                      {origin}/o/{created.slug}
+                    </code>
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => setCreated(null)}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
       )}
 
       <div className="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-800">
@@ -211,8 +264,9 @@ export default function PlatformPage() {
           New organisation
         </h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Creates the organisation and its first administrator together. They
-          can set their own logo, colour and wording once they sign in.
+          Creates the organisation and its first administrator together. Only
+          the essentials are set here — logo, brand colour, tagline and voter-ID
+          wording are theirs to choose once they sign in.
         </p>
 
         <form onSubmit={handleCreate} noValidate className="mt-5 space-y-4">
@@ -228,6 +282,7 @@ export default function PlatformPage() {
               value={form.orgName}
               onChange={(e) => handleName(e.target.value)}
               placeholder="Acme Professional Institute"
+              hint="The full legal name. Appears on printed result sheets and in the credential emails sent to voters."
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -238,6 +293,7 @@ export default function PlatformPage() {
                 value={form.orgShortName}
                 onChange={(e) => setField("orgShortName", e.target.value)}
                 placeholder="Acme"
+                hint="Shown in the sidebar and above the voter sign-in form. Also seeds their voter ID prefix, e.g. ACME-K7P2."
               />
             </div>
             <div>
@@ -250,14 +306,22 @@ export default function PlatformPage() {
                   setField("slug", slugify(e.target.value));
                 }}
                 placeholder="acme"
-                hint={form.slug ? `Voters go to /o/${form.slug}` : "Lowercase letters, numbers and dashes"}
+                hint={
+                  form.slug
+                    ? `Voters will go to ${origin}/o/${form.slug} — this cannot be changed later`
+                    : "Becomes their voter address. Lowercase letters, numbers and dashes. Fills in from the name; edit if you want something shorter."
+                }
               />
             </div>
           </div>
 
           <div className="border-t border-gray-200 pt-4 dark:border-gray-800">
-            <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
               First administrator
+            </p>
+            <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
+              The person who will run this organisation&apos;s elections. They
+              can add more administrators themselves afterwards.
             </p>
             <div className="space-y-4">
               <div>
@@ -266,6 +330,8 @@ export default function PlatformPage() {
                   id="admin-name"
                   value={form.adminName}
                   onChange={(e) => setField("adminName", e.target.value)}
+                  placeholder="Ada Lovelace"
+                  hint="Shown in the admin header and against their entries in the audit log."
                 />
               </div>
               <div>
@@ -275,6 +341,8 @@ export default function PlatformPage() {
                   type="email"
                   value={form.adminEmail}
                   onChange={(e) => setField("adminEmail", e.target.value)}
+                  placeholder="ada@acme.org"
+                  hint="What they sign in with. Must be unique across the whole platform, and no email is sent to it automatically."
                 />
               </div>
               <div>
@@ -284,7 +352,7 @@ export default function PlatformPage() {
                   type="text"
                   value={form.adminPasscode}
                   onChange={(e) => setField("adminPasscode", e.target.value)}
-                  hint="At least 8 characters. Share it with them securely; they can change it after signing in."
+                  hint="At least 8 characters. You choose it and pass it on securely — it is never emailed. They can change it once signed in."
                 />
               </div>
             </div>
