@@ -26,8 +26,8 @@ export async function GET() {
   await applyPendingSchedules();
 
   // Find currently-open elections via the event log
-  const openIds = await findElectionIdsByStatus("open");
-  const revokedElectionIds = new Set(await getRevokedIds("election"));
+  const openIds = await findElectionIdsByStatus("open", guard.value.organizationId);
+  const revokedElectionIds = new Set(await getRevokedIds("election", guard.value.organizationId));
   const liveOpenIds = openIds.filter((id) => !revokedElectionIds.has(id));
   if (liveOpenIds.length === 0) {
     return NextResponse.json({ voter, election: null, hasVoted: false });
@@ -56,8 +56,8 @@ export async function GET() {
           },
         },
       }),
-      getRevokedIds("position"),
-      getRevokedIds("candidate"),
+      getRevokedIds("position", guard.value.organizationId),
+      getRevokedIds("candidate", guard.value.organizationId),
     ],
   );
   if (!election) {

@@ -23,8 +23,12 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const params = parsePageParams(url.searchParams);
 
-  const revokedIds = await getRevokedIds("election");
-  const where = revokedIds.length > 0 ? { id: { notIn: revokedIds } } : {};
+  const revokedIds = await getRevokedIds("election", guard.value.organizationId);
+  // Tenant filter first: this drives both the page and the total count.
+  const where = {
+    organizationId: guard.value.organizationId,
+    ...(revokedIds.length > 0 ? { id: { notIn: revokedIds } } : {}),
+  };
 
   const [rows, total] = await db.$transaction([
     db.election.findMany({
@@ -85,7 +89,7 @@ export async function POST(req: Request) {
       : null;
 
   const election = await db.election.create({
-    data: { name, description },
+    data: { organizationId: guard.value.organizationId, name, description },
     select: {
       id: true,
       name: true,

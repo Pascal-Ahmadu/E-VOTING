@@ -168,9 +168,12 @@ export async function applyPendingSchedules(): Promise<void> {
  */
 export async function findElectionIdsByStatus(
   status: ElectionStatus,
+  organizationId: string,
 ): Promise<string[]> {
-  // Latest event per election
+  // Latest event per election, within this organisation. Status events have no
+  // tenant column of their own, so they are constrained through their election.
   const events = await db.electionStatusEvent.findMany({
+    where: { election: { organizationId } },
     orderBy: { createdAt: "desc" },
     distinct: ["electionId"],
     select: { electionId: true, status: true },
@@ -179,7 +182,7 @@ export async function findElectionIdsByStatus(
 
   // Elections that have NO events — must check their seed status
   const noEventElections = await db.election.findMany({
-    where: { id: { notIn: [...eventMap.keys()] } },
+    where: { organizationId, id: { notIn: [...eventMap.keys()] } },
     select: { id: true, status: true },
   });
 

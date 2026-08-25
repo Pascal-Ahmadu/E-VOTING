@@ -19,9 +19,13 @@ export async function GET() {
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
 
-  const revokedIds = await getRevokedIds("admin");
+  const revokedIds = await getRevokedIds("admin", guard.value.organizationId);
   const admins = await db.admin.findMany({
-    where: revokedIds.length > 0 ? { id: { notIn: revokedIds } } : undefined,
+    // Tenant filter first: an admin must only ever see their own colleagues.
+    where: {
+      organizationId: guard.value.organizationId,
+      ...(revokedIds.length > 0 ? { id: { notIn: revokedIds } } : {}),
+    },
     orderBy: { createdAt: "asc" },
     select: { id: true, name: true, email: true, createdAt: true },
   });
@@ -48,7 +52,14 @@ export async function POST(req: Request) {
   let admin;
   try {
     admin = await db.admin.create({
-      data: { name, email, passcodeHash: await hashSecret(passcode) },
+      // New admins join the organisation of the admin creating them; there is
+      // deliberately no way to place an admin in another tenant from here.
+      data: {
+        organizationId: guard.value.organizationId,
+        name,
+        email,
+        passcodeHash: await hashSecret(passcode),
+      },
       select: { id: true, name: true, email: true, createdAt: true },
     });
   } catch (err) {

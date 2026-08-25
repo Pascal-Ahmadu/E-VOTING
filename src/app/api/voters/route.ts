@@ -24,6 +24,7 @@ const CreateBody = z.object({
 async function restoreVoter(
   id: string,
   fields: { name: string; email: string; voterId: string; password: string; phone?: string },
+  organizationId: string,
   adminId: string,
   req: Request,
 ): Promise<NextResponse> {
@@ -36,13 +37,16 @@ async function restoreVoter(
   });
   await unrevoke("voter", id);
   const [whatsappSent, emailSent] = await Promise.all([
-    phone ? sendVoterCredentials({ phone, name, voterId, password }) : Promise.resolve(false),
-    sendVoterCredentialsEmail({ email, name, voterId, password }),
+    phone
+      ? sendVoterCredentials({ organizationId, phone, name, voterId, password })
+      : Promise.resolve(false),
+    sendVoterCredentialsEmail({ organizationId, email, name, voterId, password }),
   ]);
 
   const admin = await db.admin.findUnique({ where: { id: adminId }, select: { email: true } });
   const meta = requestMeta(req);
   await audit({
+    organizationId,
     adminId,
     adminEmail: admin?.email ?? null,
     action: "voter.restore",
@@ -76,12 +80,15 @@ export async function GET(req: Request) {
   const params = parsePageParams(url.searchParams);
   const q = url.searchParams.get("q")?.trim() ?? "";
 
-  const revokedIds = await getRevokedIds("voter");
+  const revokedIds = await getRevokedIds("voter", guard.value.organizationId);
   // Encrypted columns can't be searched by SQL `contains`. Fetch all live rows,
   // decrypt in memory, then filter + paginate. Voter counts in this app stay
   // small enough that this is fine; revisit if it grows past a few thousand.
-  const baseWhere: Prisma.VoterWhereInput =
-    revokedIds.length > 0 ? { id: { notIn: revokedIds } } : {};
+  // Tenant filter first: without it this lists every organisation's voters.
+  const baseWhere: Prisma.VoterWhereInput = {
+    organizationId: guard.value.organizationId,
+    ...(revokedIds.length > 0 ? { id: { notIn: revokedIds } } : {}),
+  };
 
   const allRows = await db.voter.findMany({
     where: baseWhere,
@@ -139,7 +146,7 @@ export async function POST(req: Request) {
 
   // Check for existing voter by email (including revoked ones for potential restore)
   const byEmail = await db.voter.findFirst({
-    where: { emailHash },
+    where: { organizationId: guard.value.organizationId, emailHash },
     select: { id: true, registeredAt: true },
   });
   if (byEmail) {
@@ -149,12 +156,12 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
-    return await restoreVoter(byEmail.id, { name, email, voterId, password, phone }, guard.value.adminId, req);
+    return await restoreVoter(byEmail.id, { name, email, voterId, password, phone }, guard.value.organizationId, guard.value.adminId, req);
   }
 
   // Check for existing voter by voter ID
   const byVoterId = await db.voter.findFirst({
-    where: { voterIdHash },
+    where: { organizationId: guard.value.organizationId, voterIdHash },
     select: { id: true, registeredAt: true },
   });
   if (byVoterId) {
@@ -164,7 +171,7 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
-    return await restoreVoter(byVoterId.id, { name, email, voterId, password, phone }, guard.value.adminId, req);
+    return await restoreVoter(byVoterId.id, { name, email, voterId, password, phone }, guard.value.organizationId, guard.value.adminId, req);
   }
 
   const encrypted = encryptVoter({ name, email, voterId, phone });
@@ -172,6 +179,7 @@ export async function POST(req: Request) {
   try {
     created = await db.voter.create({
       data: {
+        organizationId: guard.value.organizationId,
         ...encrypted,
         passwordHash: await hashSecret(password),
       },
@@ -200,8 +208,22 @@ export async function POST(req: Request) {
   }
 
   const [whatsappSent, emailSent] = await Promise.all([
-    phone ? sendVoterCredentials({ phone, name, voterId, password }) : Promise.resolve(false),
-    sendVoterCredentialsEmail({ email, name, voterId, password }),
+    phone
+      ? sendVoterCredentials({
+          organizationId: guard.value.organizationId,
+          phone,
+          name,
+          voterId,
+          password,
+        })
+      : Promise.resolve(false),
+    sendVoterCredentialsEmail({
+      organizationId: guard.value.organizationId,
+      email,
+      name,
+      voterId,
+      password,
+    }),
   ]);
 
   const admin = await db.admin.findUnique({
@@ -210,6 +232,7 @@ export async function POST(req: Request) {
   });
   const meta = requestMeta(req);
   await audit({
+    organizationId: guard.value.organizationId,
     adminId: guard.value.adminId,
     adminEmail: admin?.email ?? null,
     action: "voter.register",

@@ -20,8 +20,8 @@ export async function POST(
   if (await isRevoked("election", id)) {
     return NextResponse.json({ error: "Election not found" }, { status: 404 });
   }
-  const election = await db.election.findUnique({
-    where: { id },
+  const election = await db.election.findFirst({
+    where: { id, organizationId: guard.value.organizationId },
     select: { name: true },
   });
   if (!election) {
