@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth-guards";
 import { requireSameOrigin } from "@/lib/csrf";
 import { audit, requestMeta } from "@/lib/audit";
+import { log } from "@/lib/logger";
 
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 const MAX_BYTES = 1 * 1024 * 1024; // 1 MB — a logo has no business being larger
@@ -15,6 +16,23 @@ const EXT: Record<string, string> = {
   "image/svg+xml": "svg",
 };
 
+/**
+ * Vercel Blob reads its credential straight from the environment, so a missing
+ * token surfaces as a thrown error deep inside `put` rather than anything the
+ * caller can act on. Checked up front so the admin gets a usable message
+ * instead of an opaque 500.
+ */
+function blobNotConfigured(): NextResponse | null {
+  if (process.env.BLOB_READ_WRITE_TOKEN) return null;
+  return NextResponse.json(
+    {
+      error:
+        "File uploads are not configured on this deployment. Set BLOB_READ_WRITE_TOKEN in the project's environment variables.",
+    },
+    { status: 503 },
+  );
+}
+
 export async function POST(req: Request) {
   const csrf = requireSameOrigin(req);
   if (csrf) return csrf;
@@ -22,6 +40,9 @@ export async function POST(req: Request) {
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
   const { organizationId, adminId } = guard.value;
+
+  const misconfigured = blobNotConfigured();
+  if (misconfigured) return misconfigured;
 
   let formData: FormData;
   try {
@@ -66,11 +87,23 @@ export async function POST(req: Request) {
   // Keyed by organisation so tenants cannot overwrite each other's logo, and
   // `addRandomSuffix` gives each upload a distinct URL, sidestepping CDN
   // caching of the previous one.
-  const blob = await put(
-    `branding/${organizationId}/logo.${EXT[image.type]}`,
-    image,
-    { access: "public", addRandomSuffix: true },
-  );
+  let blob;
+  try {
+    blob = await put(
+      `branding/${organizationId}/logo.${EXT[image.type]}`,
+      image,
+      { access: "public", addRandomSuffix: true },
+    );
+  } catch (err) {
+    log.error("logo_upload_failed", {
+      organizationId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    return NextResponse.json(
+      { error: "Could not store the logo. Check the Blob storage configuration." },
+      { status: 502 },
+    );
+  }
 
   await db.organization.update({
     where: { id: organizationId },
@@ -97,6 +130,9 @@ export async function DELETE(req: Request) {
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
   const { organizationId, adminId } = guard.value;
+
+  const misconfigured = blobNotConfigured();
+  if (misconfigured) return misconfigured;
 
   const existing = await db.organization.findUnique({
     where: { id: organizationId },

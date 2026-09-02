@@ -6,6 +6,22 @@ import { requireSameOrigin } from "@/lib/csrf";
 import { isRevoked } from "@/lib/revocation";
 import { getElectionState } from "@/lib/election-state";
 
+/**
+ * Vercel Blob reads its credential straight from the environment, so a missing
+ * token surfaces as a thrown error deep inside `put`. Checked up front so the
+ * admin gets a usable message instead of an opaque 500.
+ */
+function blobNotConfigured(): NextResponse | null {
+  if (process.env.BLOB_READ_WRITE_TOKEN) return null;
+  return NextResponse.json(
+    {
+      error:
+        "File uploads are not configured on this deployment. Set BLOB_READ_WRITE_TOKEN in the project's environment variables.",
+    },
+    { status: 503 },
+  );
+}
+
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
@@ -18,6 +34,9 @@ export async function POST(
 
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
+
+  const misconfigured = blobNotConfigured();
+  if (misconfigured) return misconfigured;
 
   const { id } = await ctx.params;
   if (await isRevoked("candidate", id)) {
@@ -76,9 +95,15 @@ export async function POST(
   }
 
   const ext = image.type === "image/png" ? "png" : image.type === "image/webp" ? "webp" : "jpg";
-  const blob = await put(`candidates/${id}.${ext}`, image, {
-    access: "public",
-  });
+  let blob;
+  try {
+    blob = await put(`candidates/${id}.${ext}`, image, { access: "public" });
+  } catch {
+    return NextResponse.json(
+      { error: "Could not store the photo. Check the Blob storage configuration." },
+      { status: 502 },
+    );
+  }
 
   await db.candidate.update({
     where: { id },
