@@ -108,6 +108,14 @@ export async function sendVoterCredentialsEmail({
 /**
  * Send voter credentials via Infobip WhatsApp template message.
  *
+ * The template must be in the Utility category with exactly four body
+ * placeholders, in this order: name, voter-ID label and value, password, and
+ * the voting link. Meta rejects a send whose placeholder count does not match
+ * the approved template, so this list and the template must stay in step.
+ *
+ * The Authentication category will not work: its copy is fixed by Meta and
+ * reserved for one-time passcodes.
+ *
  * Required env vars:
  *   INFOBIP_API_KEY       – from Infobip portal
  *   INFOBIP_BASE_URL      – e.g. 8vmrkr.api.infobip.com
@@ -145,12 +153,15 @@ export async function sendVoterCredentials({
     return false;
   }
 
-  const placeholder = [
+  // Four values, matching the four {{n}} slots in the approved template. The
+  // count is fixed: an empty string keeps the positions aligned when there is
+  // no app URL configured, since dropping one would shift every later slot.
+  const placeholders = [
     name,
     `${voterIdLabel}: ${voterId}`,
-    `Password: ${password}`,
-    ...(appUrl ? [`Vote at: ${appUrl}`] : []),
-  ].join(" | ");
+    password,
+    appUrl,
+  ];
 
   try {
     const res = await fetch(`https://${baseUrl}/whatsapp/1/message/template`, {
@@ -167,7 +178,7 @@ export async function sendVoterCredentials({
             to,
             content: {
               templateName,
-              templateData: { body: { placeholders: [placeholder] } },
+              templateData: { body: { placeholders } },
               language: "en",
             },
           },
