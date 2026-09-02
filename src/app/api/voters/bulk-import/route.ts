@@ -230,7 +230,7 @@ export async function POST(req: Request) {
       });
       await unrevoke("voter", existingMatch.id);
       sendPromises.push(sendVoterCredentialsEmail({ organizationId, email: row.email, name: row.name, voterId: row.voterId, password }));
-      if (row.phone) sendPromises.push(sendVoterCredentials({ organizationId, phone: row.phone, name: row.name, voterId: row.voterId, password }));
+      if (row.phone) sendPromises.push(sendVoterCredentials({ phone: row.phone, password }));
       batchVoterIdHashes.add(voterIdHashCheck);
       created.push({ name: row.name, email: row.email, voterId: row.voterId, password, phone: row.phone || undefined });
       continue;
@@ -251,7 +251,7 @@ export async function POST(req: Request) {
         },
       });
       sendPromises.push(sendVoterCredentialsEmail({ organizationId, email: row.email, name: row.name, voterId, password }));
-      if (row.phone) sendPromises.push(sendVoterCredentials({ organizationId, phone: row.phone, name: row.name, voterId, password }));
+      if (row.phone) sendPromises.push(sendVoterCredentials({ phone: row.phone, password }));
       created.push({ name: row.name, email: row.email, voterId, password, phone: row.phone || undefined });
     } catch (err) {
       if (

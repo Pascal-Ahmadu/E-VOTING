@@ -38,7 +38,7 @@ async function restoreVoter(
   await unrevoke("voter", id);
   const [whatsappSent, emailSent] = await Promise.all([
     phone
-      ? sendVoterCredentials({ organizationId, phone, name, voterId, password })
+      ? sendVoterCredentials({ phone, password })
       : Promise.resolve(false),
     sendVoterCredentialsEmail({ organizationId, email, name, voterId, password }),
   ]);
@@ -209,13 +209,7 @@ export async function POST(req: Request) {
 
   const [whatsappSent, emailSent] = await Promise.all([
     phone
-      ? sendVoterCredentials({
-          organizationId: guard.value.organizationId,
-          phone,
-          name,
-          voterId,
-          password,
-        })
+      ? sendVoterCredentials({ phone, password })
       : Promise.resolve(false),
     sendVoterCredentialsEmail({
       organizationId: guard.value.organizationId,

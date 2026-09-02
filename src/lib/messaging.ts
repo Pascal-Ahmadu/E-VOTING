@@ -106,15 +106,15 @@ export async function sendVoterCredentialsEmail({
 }
 
 /**
- * Send voter credentials via Infobip WhatsApp template message.
+ * Send the voter's temporary password over WhatsApp.
  *
- * The template must be in the Utility category with exactly four body
- * placeholders, in this order: name, voter-ID label and value, password, and
- * the voting link. Meta rejects a send whose placeholder count does not match
- * the approved template, so this list and the template must stay in step.
+ * Uses an Authentication-category template, which is what Meta intends for a
+ * temporary password — a Utility template carrying credentials is rejected with
+ * "template category does not match message content".
  *
- * The Authentication category will not work: its copy is fixed by Meta and
- * reserved for one-time passcodes.
+ * That category fixes the copy and allows exactly one variable, so only the
+ * password travels this way. The voter ID and the voting link go by email,
+ * which has no such constraint.
  *
  * Required env vars:
  *   INFOBIP_API_KEY       – from Infobip portal
@@ -124,16 +124,10 @@ export async function sendVoterCredentialsEmail({
  *   INFOBIP_TEMPLATE_LANGUAGE – its registered language, e.g. en_US (optional)
  */
 export async function sendVoterCredentials({
-  organizationId,
   phone,
-  name,
-  voterId,
   password,
 }: {
-  organizationId: string;
   phone: string;
-  name: string;
-  voterId: string;
   password: string;
 }): Promise<boolean> {
   const apiKey = process.env.INFOBIP_API_KEY;
@@ -143,9 +137,6 @@ export async function sendVoterCredentials({
   // Must match the language the template was registered under exactly: Meta
   // treats "en" and "en_US" as different templates and rejects a mismatch.
   const templateLanguage = process.env.INFOBIP_TEMPLATE_LANGUAGE ?? "en_US";
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  const { voterIdLabel } = await getBrandingByOrgId(organizationId);
-
   if (!apiKey) {
     console.error("[Infobip] INFOBIP_API_KEY env var is not set — skipping send");
     return false;
@@ -157,15 +148,9 @@ export async function sendVoterCredentials({
     return false;
   }
 
-  // Four values, matching the four {{n}} slots in the approved template. The
-  // count is fixed: an empty string keeps the positions aligned when there is
-  // no app URL configured, since dropping one would shift every later slot.
-  const placeholders = [
-    name,
-    `${voterIdLabel}: ${voterId}`,
-    password,
-    appUrl,
-  ];
+  // One value: an Authentication template renders as "{{1}} is your
+  // verification code" and permits no other variables.
+  const placeholders = [password];
 
   try {
     const res = await fetch(`https://${baseUrl}/whatsapp/1/message/template`, {
