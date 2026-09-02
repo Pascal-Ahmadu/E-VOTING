@@ -121,6 +121,7 @@ export async function sendVoterCredentialsEmail({
  *   INFOBIP_BASE_URL      – e.g. 8vmrkr.api.infobip.com
  *   INFOBIP_SENDER        – WhatsApp sender number
  *   INFOBIP_TEMPLATE_NAME – approved template name
+ *   INFOBIP_TEMPLATE_LANGUAGE – its registered language, e.g. en_US (optional)
  */
 export async function sendVoterCredentials({
   organizationId,
@@ -139,6 +140,9 @@ export async function sendVoterCredentials({
   const baseUrl = process.env.INFOBIP_BASE_URL ?? "8vmrkr.api.infobip.com";
   const from = process.env.INFOBIP_SENDER || "447860088970";
   const templateName = process.env.INFOBIP_TEMPLATE_NAME ?? "test_whatsapp_template_en";
+  // Must match the language the template was registered under exactly: Meta
+  // treats "en" and "en_US" as different templates and rejects a mismatch.
+  const templateLanguage = process.env.INFOBIP_TEMPLATE_LANGUAGE ?? "en_US";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const { voterIdLabel } = await getBrandingByOrgId(organizationId);
 
@@ -179,7 +183,7 @@ export async function sendVoterCredentials({
             content: {
               templateName,
               templateData: { body: { placeholders } },
-              language: "en",
+              language: templateLanguage,
             },
           },
         ],
