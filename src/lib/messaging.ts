@@ -11,6 +11,22 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * Absolute URL of the organisation's voter sign-in page, for links inside
+ * messages that are read outside the app. Prefers the configured public URL and
+ * falls back to the Vercel production hostname, so the link still works when
+ * NEXT_PUBLIC_APP_URL was never set. Empty when neither is known.
+ */
+export function voterSignInUrl(slug: string | null): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const vercelHost =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  const base = configured || (vercelHost ? `https://${vercelHost}` : "");
+  if (!base) return "";
+  const root = base.endsWith("/") ? base.slice(0, -1) : base;
+  return slug ? `${root}/o/${slug}` : root;
+}
+
 /** Normalise a Nigerian phone number to international format (234XXXXXXXXXX). */
 function normalizePhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
@@ -52,9 +68,9 @@ export async function sendVoterCredentialsEmail({
     return false;
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  const { emailFromName, orgName, brandColor, voterIdLabel } =
+  const { emailFromName, orgName, brandColor, voterIdLabel, slug } =
     await getBrandingByOrgId(organizationId);
+  const voteUrl = voterSignInUrl(slug);
 
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
@@ -74,7 +90,7 @@ export async function sendVoterCredentialsEmail({
         `Your ${orgName} voting credentials:`,
         `${voterIdLabel}: ${voterId}`,
         `Password: ${password}`,
-        ...(appUrl ? [``, `Vote at: ${appUrl}`] : []),
+        ...(voteUrl ? [``, `Vote at: ${voteUrl}`] : []),
         ``,
         `Do not share these credentials with anyone.`,
       ].join("\n"),
@@ -93,7 +109,7 @@ export async function sendVoterCredentialsEmail({
               <td style="padding:8px 12px;font-family:monospace;font-size:16px">${escapeHtml(password)}</td>
             </tr>
           </table>
-          ${appUrl ? `<a href="${appUrl}" style="display:inline-block;background:${brandColor};color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">Vote now</a>` : ""}
+          ${voteUrl ? `<a href="${voteUrl}" style="display:inline-block;background:${brandColor};color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">Vote now</a>` : ""}
           <p style="margin-top:24px;color:#6b7280;font-size:12px">Do not share these credentials with anyone.</p>
         </div>
       `,

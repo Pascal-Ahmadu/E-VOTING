@@ -73,10 +73,11 @@ const EMPTY_FORM: VoterForm = { name: "", email: "", voterId: "", password: "", 
 
 function whatsappUrl(
   voter: { name: string; voterId: string; password: string },
-  branding: { orgName: string; voterIdLabel: string },
+  branding: { orgName: string; voterIdLabel: string; slug: string | null },
   phone?: string,
 ): string {
-  const appUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const appUrl = branding.slug ? `${origin}/o/${branding.slug}` : origin;
   const text = [
     `Hello ${voter.name},`,
     "",
@@ -111,7 +112,7 @@ type ModalView =
   | { kind: "import-results"; created: BulkImportRow[]; skipped: SkippedRow[] };
 
 export default function VotersPage() {
-  const { orgName, voterIdLabel } = useBranding();
+  const { orgName, voterIdLabel, slug } = useBranding();
   // How the identifier column should be spelled in an uploaded CSV, plus a
   // matching stem for the worked example below.
   const csvIdColumn = voterIdLabel.toLowerCase();
@@ -640,7 +641,7 @@ export default function VotersPage() {
 
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               <a
-                href={whatsappUrl(view.voter, { orgName, voterIdLabel }, form.phone)}
+                href={whatsappUrl(view.voter, { orgName, voterIdLabel, slug }, form.phone)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[#25D366] bg-[#25D366]/10 px-3 py-1.5 text-sm font-medium text-[#128C7E] hover:bg-[#25D366]/20 dark:text-[#25D366]"
@@ -746,7 +747,7 @@ export default function VotersPage() {
                       <td className="px-3 py-2 font-mono">{v.password}</td>
                       <td className="px-3 py-2">
                         <a
-                          href={whatsappUrl(v, { orgName, voterIdLabel }, v.phone)}
+                          href={whatsappUrl(v, { orgName, voterIdLabel, slug }, v.phone)}
                           target="_blank"
                           rel="noopener noreferrer"
                           title="Send via WhatsApp"
