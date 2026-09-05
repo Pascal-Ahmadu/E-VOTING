@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth-guards";
 import { requireSameOrigin } from "@/lib/csrf";
 import { audit, requestMeta } from "@/lib/audit";
 import { decryptVoterFields } from "@/lib/voter-pii";
+import { sendVoterCredentials, sendVoterCredentialsEmail } from "@/lib/messaging";
 
 const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PASSWORD_LENGTH = 8;
@@ -33,9 +34,11 @@ export async function POST(
     where: { id },
     select: {
       id: true,
+      organizationId: true,
       name: true,
       email: true,
       voterId: true,
+      phone: true,
       registeredAt: true,
     },
   });
@@ -51,6 +54,21 @@ export async function POST(
   const voter = decryptVoterFields(voterRow);
   const password = generatePassword();
   await rotateVoterPassword(voter.id, password);
+
+  // Deliver the new password the same way registration does, so the admin
+  // sees whether the voter actually received it rather than a blanket failure.
+  const [whatsappSent, emailSent] = await Promise.all([
+    voter.phone
+      ? sendVoterCredentials({ phone: voter.phone, password })
+      : Promise.resolve(false),
+    sendVoterCredentialsEmail({
+      organizationId: voter.organizationId,
+      email: voter.email,
+      name: voter.name,
+      voterId: voter.voterId,
+      password,
+    }),
+  ]);
 
   const admin = await db.admin.findUnique({
     where: { id: guard.value.adminId },
@@ -70,9 +88,15 @@ export async function POST(
 
   return NextResponse.json({
     voter: {
-      ...voter,
+      id: voter.id,
+      name: voter.name,
+      email: voter.email,
+      voterId: voter.voterId,
       registeredAt: voter.registeredAt.toISOString(),
       password,
     },
+    whatsappSent,
+    emailSent,
+    phoneUsed: voter.phone ?? undefined,
   });
 }

@@ -301,14 +301,14 @@ export default function VotersPage() {
   const handleResetPassword = async () => {
     if (!resetConfirm) return;
     setResetting(true);
-    const result = await apiCall<{ voter: VoterCredentials }>(
+    const result = await apiCall<{ voter: VoterCredentials; whatsappSent?: boolean; emailSent?: boolean; phoneUsed?: string }>(
       `/api/voters/${resetConfirm.id}/reset-password`,
       { method: "POST" },
     );
     setResetting(false);
     setResetConfirm(null);
     if (result.ok) {
-      setView({ kind: "success", voter: result.data.voter });
+      setView({ kind: "success", voter: result.data.voter, whatsappSent: result.data.whatsappSent, emailSent: result.data.emailSent, phoneUsed: result.data.phoneUsed });
     }
   };
 
